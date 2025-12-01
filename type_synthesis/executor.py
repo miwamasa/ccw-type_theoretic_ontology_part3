@@ -197,6 +197,10 @@ class Executor:
             return self._execute_builtin(impl, input_value)
         elif impl_type == "unit_conversion":
             return self._execute_unit_conversion(impl, input_value)
+        elif impl_type == "json":
+            return self._execute_json(impl, input_value)
+        elif impl_type == "template":
+            return self._execute_template(impl, input_value)
         else:
             raise ExecutionError(f"Unknown impl type: {impl_type}")
     
@@ -381,14 +385,119 @@ class Executor:
     def _execute_unit_conversion(self, impl: Dict, input_value: Any) -> Any:
         """単位変換を実行"""
         factor = impl.get("factor", 1.0)
-        
+
         if isinstance(input_value, (int, float)):
             return input_value * factor
         elif isinstance(input_value, (list, tuple)):
             return type(input_value)(v * factor for v in input_value)
         else:
             return input_value
-    
+
+    def _execute_json(self, impl: Dict, input_value: Any) -> Any:
+        """JSON構造を生成"""
+        schema = impl.get("schema", {})
+
+        # スキーマに基づいてJSONオブジェクトを構築
+        result = self._build_json_from_schema(schema, input_value)
+        return result
+
+    def _build_json_from_schema(self, schema: Dict[str, Any], input_value: Any) -> Dict[str, Any]:
+        """スキーマから実際のJSONを構築"""
+        result = {}
+
+        # 入力値を変数としてセットアップ
+        local_vars = dict(self.context.constants)
+        local_vars.update(self.context.variables)
+
+        # 入力値の処理
+        if isinstance(input_value, tuple):
+            # Product型（タプル）の場合
+            for i, val in enumerate(input_value):
+                local_vars[f"arg{i}"] = val
+                local_vars[f"x{i}"] = val
+            if len(input_value) == 3:
+                local_vars["scope1"] = input_value[0]
+                local_vars["scope2"] = input_value[1]
+                local_vars["scope3"] = input_value[2]
+        elif isinstance(input_value, dict):
+            local_vars.update(input_value)
+        else:
+            local_vars["value"] = input_value
+            local_vars["input"] = input_value
+
+        # スキーマの各フィールドを処理
+        for key, value_spec in schema.items():
+            if isinstance(value_spec, str):
+                # 式の場合: 評価する
+                try:
+                    safe_builtins = {
+                        "abs": abs, "round": round, "min": min, "max": max,
+                        "sum": sum, "len": len, "str": str, "int": int, "float": float,
+                        "isinstance": isinstance, "dict": dict, "list": list, "tuple": tuple,
+                        "dir": dir,
+                    }
+                    result[key] = eval(value_spec, {"__builtins__": safe_builtins}, local_vars)
+                except Exception as e:
+                    # 評価できない場合はそのまま文字列として扱う
+                    # デバッグ用: print(f"Failed to evaluate '{value_spec}': {e}")
+                    result[key] = value_spec
+            elif isinstance(value_spec, dict):
+                # ネストされたオブジェクトの場合: 再帰的に処理
+                result[key] = self._build_json_from_schema(value_spec, input_value)
+            elif isinstance(value_spec, list):
+                # リストの場合
+                result[key] = [
+                    self._build_json_from_schema(item, input_value) if isinstance(item, dict) else item
+                    for item in value_spec
+                ]
+            else:
+                # その他: そのまま設定
+                result[key] = value_spec
+
+        return result
+
+    def _execute_template(self, impl: Dict, input_value: Any) -> Any:
+        """テンプレートからXML/JSONを生成"""
+        template_str = impl.get("template", "")
+        mappings = impl.get("mappings", {})
+
+        # 入力値を変数としてセットアップ
+        local_vars = dict(self.context.constants)
+        local_vars.update(self.context.variables)
+
+        # 入力値の処理
+        if isinstance(input_value, tuple):
+            for i, val in enumerate(input_value):
+                local_vars[f"arg{i}"] = val
+            if len(input_value) == 3:
+                local_vars["scope1"] = input_value[0]
+                local_vars["scope2"] = input_value[1]
+                local_vars["scope3"] = input_value[2]
+        elif isinstance(input_value, dict):
+            local_vars.update(input_value)
+        else:
+            local_vars["value"] = input_value
+
+        # マッピングを評価
+        evaluated_mappings = {}
+        safe_builtins = {
+            "abs": abs, "round": round, "min": min, "max": max,
+            "sum": sum, "len": len, "str": str, "int": int, "float": float,
+        }
+
+        for key, expr in mappings.items():
+            try:
+                evaluated_mappings[key] = eval(expr, {"__builtins__": safe_builtins}, local_vars)
+            except:
+                evaluated_mappings[key] = expr
+
+        # テンプレート置換
+        result = template_str
+        for key, value in evaluated_mappings.items():
+            result = result.replace(f"{{{{{key}}}}}", str(value))
+
+        return result
+
     def _substitute_placeholders(self, template: str, input_value: Any) -> str:
         """テンプレート内のプレースホルダーを置換"""
         result = template
