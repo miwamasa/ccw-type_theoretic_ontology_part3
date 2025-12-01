@@ -20,16 +20,22 @@ class TypeDef:
     """型定義"""
     name: str
     attrs: Dict[str, str] = field(default_factory=dict)
-    
+    schema: Optional[Dict[str, Any]] = None  # 構造化データのスキーマ（JSON/XMLなど）
+
     def __hash__(self):
         return hash(self.name)
-    
+
     def __eq__(self, other):
         if isinstance(other, str):
             return self.name == other
         if isinstance(other, TypeDef):
             return self.name == other.name
         return False
+
+    @property
+    def is_structured(self) -> bool:
+        """構造化データ型かどうか"""
+        return self.schema is not None
 
 
 @dataclass

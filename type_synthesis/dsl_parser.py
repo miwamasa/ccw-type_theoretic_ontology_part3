@@ -232,24 +232,26 @@ class DSLParser:
     def _parse_impl(self, impl_str: str) -> Dict[str, Any]:
         """
         実装仕様をパース
-        
+
         - sparql("...")
         - formula("...")
         - rest("...")
         - builtin("...")
+        - json({...})
+        - template("...", {...})
         """
         impl_str = impl_str.strip()
-        
+
         # sparql("...")
         match = re.match(r'sparql\s*\(\s*"([^"]*)"\s*\)', impl_str)
         if match:
             return {"type": "sparql", "query": match.group(1)}
-        
+
         # formula("...")
         match = re.match(r'formula\s*\(\s*"([^"]*)"\s*\)', impl_str)
         if match:
             return {"type": "formula", "expr": match.group(1)}
-        
+
         # rest("...")
         match = re.match(r'rest\s*\(\s*"([^"]*)"\s*\)', impl_str)
         if match:
@@ -259,12 +261,35 @@ class DSLParser:
                 method, url = content.split(',', 1)
                 return {"type": "rest", "method": method.strip(), "url": url.strip()}
             return {"type": "rest", "url": content}
-        
+
         # builtin("...")
         match = re.match(r'builtin\s*\(\s*"([^"]*)"\s*\)', impl_str)
         if match:
             return {"type": "builtin", "name": match.group(1)}
-        
+
+        # json({...})
+        if impl_str.startswith('json'):
+            schema_match = re.match(r'json\s*\(\s*(\{.*\})\s*\)', impl_str, re.DOTALL)
+            if schema_match:
+                import json
+                try:
+                    schema = json.loads(schema_match.group(1))
+                    return {"type": "json", "schema": schema}
+                except json.JSONDecodeError as e:
+                    raise DSLParseError(f"Invalid JSON schema: {e}")
+
+        # template("template_str", {mappings})
+        if impl_str.startswith('template'):
+            template_match = re.match(r'template\s*\(\s*"([^"]+)"\s*,\s*(\{.*\})\s*\)', impl_str, re.DOTALL)
+            if template_match:
+                import json
+                template_str = template_match.group(1)
+                try:
+                    mappings = json.loads(template_match.group(2))
+                    return {"type": "template", "template": template_str, "mappings": mappings}
+                except json.JSONDecodeError as e:
+                    raise DSLParseError(f"Invalid template mappings: {e}")
+
         # デフォルトはidentity
         return {"type": "builtin", "name": "identity"}
 

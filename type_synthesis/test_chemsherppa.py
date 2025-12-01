@@ -203,7 +203,15 @@ def test_dag_execution(catalog: Catalog) -> TestResult:
     
     try:
         result = execute_dag(dag, source_values, context)
-        return TestResult("DAG実行", True, f"実行結果: {result}")
+        # dict型の結果を検証
+        if isinstance(result, dict):
+            has_header = "header" in result
+            has_product = "product" in result
+            has_substances = "substances" in result
+            msg = f"実行成功 (dict型): header={has_header}, product={has_product}, substances={has_substances}"
+            return TestResult("DAG実行", True, msg)
+        else:
+            return TestResult("DAG実行", True, f"実行結果: {result} (型: {type(result)})")
     except Exception as e:
         return TestResult("DAG実行", False, f"実行エラー: {e}")
 
@@ -415,33 +423,37 @@ def demo_chemsherppa_synthesis():
         
         context = ExecutionContext()
         result = execute_dag(dag, source_values, context)
-        
-        print(f"  結果: {result}")
-        
-        # 期待されるXML構造のサマリー
-        print("\n【生成されるChemSHERPA XML構造】")
-        print("""
-  <MaterialDeclaration>
-    <Header>
-      <DeclarationType>Composition</DeclarationType>
-      <CompanyName>ABC電池株式会社</CompanyName>
-    </Header>
-    <Product>
-      <ProductName>リチウムイオン電池</ProductName>
-      <Mass>500kg</Mass>
-    </Product>
-    <Composition>
-      <Material name="電極材料">
-        <Substance name="Lead (Pb)" concentration="0.0083%" compliance="RoHS-Compliant"/>
-        <Substance name="Cobalt (Co)" concentration="60%" compliance="REACH-Check"/>
-      </Material>
-      <Material name="包装材">
-        <Substance name="PVC" concentration="0.001%" compliance="RoHS-Compliant"/>
-      </Material>
-    </Composition>
-    <Compliance>true</Compliance>
-  </MaterialDeclaration>
-        """)
+
+        print(f"  結果型: {type(result)}")
+
+        # 実際に生成されたChemSHERPA JSON構造を表示
+        print("\n【生成されたChemSHERPA JSONレポート】")
+        if isinstance(result, dict):
+            import json
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+
+            # 検証
+            print("\n【JSONレポート検証】")
+            if "header" in result:
+                print(f"  ✓ ヘッダー: {result['header']['companyName']}")
+            if "product" in result:
+                print(f"  ✓ 製品: {result['product']['productName']}, 重量: {result['product'].get('mass', 'N/A')} {result['product'].get('unit', '')}")
+            if "substances" in result:
+                print(f"  ✓ 物質データ:")
+                subs = result["substances"]
+                if "lead" in subs:
+                    pb = subs["lead"]
+                    print(f"    - 鉛(Pb): {pb.get('amount', 'N/A')} kg, 濃度: {pb.get('concentration', 'N/A')}%, RoHS準拠: {pb.get('rohs_compliant', 'N/A')}")
+                if "cobalt" in subs:
+                    co = subs["cobalt"]
+                    print(f"    - コバルト(Co): {co.get('amount', 'N/A')} kg, 濃度: {co.get('concentration', 'N/A')}%")
+                if "pvc" in subs:
+                    pvc = subs["pvc"]
+                    print(f"    - PVC: {pvc.get('amount', 'N/A')} kg, 濃度: {pvc.get('concentration', 'N/A')}%")
+            if "compliance" in result:
+                print(f"  ✓ 総合遵守状況: RoHS={result['compliance'].get('rohs', 'N/A')}, REACH={result['compliance'].get('reach', 'N/A')}")
+        else:
+            print(f"  警告: 結果がdict型ではありません: {result}")
     else:
         print("  合成に失敗しました")
 
