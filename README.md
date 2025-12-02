@@ -135,7 +135,7 @@ result = execute_dag(dag, {
 print(f"Total: {result} kg-CO2")  # 1700.0 kg-CO2
 ```
 
-### ChemSHERPA レポート生成
+### 化学物質情報伝達レポート生成
 
 **構造化データ生成の実例**: 化学物質管理データから規制準拠レポートをJSONで生成
 
@@ -171,10 +171,10 @@ type_synthesis/
 ├── run_dsl.py             # CLIツール
 ├── catalog.dsl            # CFP計算例
 ├── ghg_scope123_product.dsl  # GHG Scope統合例
-├── chemsherppa_battery.dsl   # ChemSHERPA例
+├── chemsherppa_battery.dsl   # 化学物質情報伝達例
 ├── test_dsl.py            # 基本テスト（19テスト）
 ├── test_product_type.py   # Product型テスト（8テスト）
-└── test_chemsherppa.py    # ChemSHERPA統合テスト（9テスト）
+└── test_chemsherppa.py    # 化学物質情報伝達統合テスト（9テスト）
 ```
 
 ## ドキュメント
@@ -189,7 +189,7 @@ type_synthesis/
 # 全テストスイートを実行
 python test_dsl.py           # 基本機能テスト（19/19）
 python test_product_type.py  # Product型テスト（8/8）
-python test_chemsherppa.py   # ChemSHERPA統合テスト（9/9）
+python test_chemsherppa.py   # 化学物質情報伝達統合テスト（9/9）
 ```
 
 **全36テストが成功** ✅
