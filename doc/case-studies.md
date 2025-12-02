@@ -6,7 +6,7 @@
 
 1. [Case Study 1: CFP計算システム](#case-study-1-cfp計算システム)
 2. [Case Study 2: GHG Scope 1,2,3 統合](#case-study-2-ghg-scope-123-統合)
-3. [Case Study 3: ChemSHERPAレポート生成](#case-study-3-chemsherpaレポート生成)
+3. [Case Study 3: 化学物質情報伝達レポート生成](#case-study-3-化学物質情報伝達レポート生成)
 4. [適用可能な他の領域](#適用可能な他の領域)
 
 ---
@@ -283,11 +283,11 @@ org_s3: Organization                       │
 
 ---
 
-## Case Study 3: ChemSHERPAレポート生成
+## Case Study 3: 化学物質情報伝達レポート生成
 
 ### 背景
 
-ABC電池株式会社は、リチウムイオン電池の製造において、ChemSHERPA（化学物質情報伝達スキーム）に準拠したレポートを生成する必要がある。
+ABC電池株式会社は、リチウムイオン電池の製造において、化学物質情報伝達スキームに準拠したレポートを生成する必要がある。
 
 調達・製造・輸送の3フェーズのデータから、RoHS/REACH規制に準拠したJSONレポートを自動生成したい。
 
@@ -652,7 +652,7 @@ fn mergeEntities {
 
 1. **CFP計算**: 複数パスから最適な計算経路を自動選択
 2. **GHG Scope統合**: 多引数関数で複数ソースを統合
-3. **ChemSHERPA**: 計算結果から構造化JSONを動的生成
+3. **化学物質情報伝達**: 計算結果から構造化JSONを動的生成
 
 **共通の利点**:
 - 宣言的DSLによる高い保守性
