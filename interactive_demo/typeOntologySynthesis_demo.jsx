@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-  ArrowRight, 
-  Play, 
-  Settings, 
-  Database, 
-  Code, 
-  Layers, 
-  CheckCircle, 
+import {
+  ArrowRight,
+  Play,
+  Settings,
+  Database,
+  Code,
+  Layers,
+  CheckCircle,
   AlertCircle,
   TrendingUp,
   Activity,
   Zap,
-  Box
+  Box,
+  Trash2,
+  Plus,
+  X,
+  FileText
 } from 'lucide-react';
 
 // --- Types ---
@@ -515,6 +519,326 @@ const executePipeline = (node: SynthesisNode, context: any): any => {
 
 // --- Components ---
 
+// Block Editor Components
+const TypeBlock = ({ typeDef, onUpdate, onDelete }: {
+  typeDef: TypeDef;
+  onUpdate: (updated: TypeDef) => void;
+  onDelete: () => void;
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const addAttribute = () => {
+    const newAttrs = { ...typeDef.attrs, [`attr${Object.keys(typeDef.attrs).length + 1}`]: '' };
+    onUpdate({ ...typeDef, attrs: newAttrs });
+  };
+
+  const updateAttribute = (oldKey: string, newKey: string, value: string) => {
+    const newAttrs = { ...typeDef.attrs };
+    delete newAttrs[oldKey];
+    newAttrs[newKey] = value;
+    onUpdate({ ...typeDef, attrs: newAttrs });
+  };
+
+  const deleteAttribute = (key: string) => {
+    const newAttrs = { ...typeDef.attrs };
+    delete newAttrs[key];
+    onUpdate({ ...typeDef, attrs: newAttrs });
+  };
+
+  return (
+    <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-3 mb-2 shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 flex-1">
+          <div className="bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold">type</div>
+          <input
+            type="text"
+            value={typeDef.name}
+            onChange={(e) => onUpdate({ ...typeDef, name: e.target.value })}
+            className="flex-1 bg-white border border-blue-300 rounded px-2 py-1 text-sm font-bold"
+            placeholder="TypeName"
+          />
+        </div>
+        <button onClick={onDelete} className="text-red-500 hover:text-red-700 ml-2">
+          <Trash2 size={16} />
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div className="ml-6 space-y-2">
+          {/* Product Type Option */}
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={typeDef.isProduct}
+              onChange={(e) => onUpdate({ ...typeDef, isProduct: e.target.checked })}
+              className="rounded"
+            />
+            <span>Product Type (A × B)</span>
+          </label>
+
+          {typeDef.isProduct ? (
+            <div>
+              <label className="text-xs text-slate-600">Components (comma-separated):</label>
+              <input
+                type="text"
+                value={typeDef.components.join(', ')}
+                onChange={(e) => onUpdate({ ...typeDef, components: e.target.value.split(',').map(s => s.trim()) })}
+                className="w-full bg-white border border-blue-200 rounded px-2 py-1 text-sm mt-1"
+                placeholder="TypeA, TypeB, TypeC"
+              />
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-slate-600">Attributes:</label>
+                <button onClick={addAttribute} className="text-blue-600 hover:text-blue-800">
+                  <Plus size={14} />
+                </button>
+              </div>
+              {Object.entries(typeDef.attrs).map(([key, value]) => (
+                <div key={key} className="flex items-center gap-2 mb-1">
+                  <input
+                    type="text"
+                    value={key}
+                    onChange={(e) => updateAttribute(key, e.target.value, value)}
+                    className="w-1/3 bg-white border border-blue-200 rounded px-2 py-1 text-xs"
+                    placeholder="key"
+                  />
+                  <span className="text-xs">=</span>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => updateAttribute(key, key, e.target.value)}
+                    className="flex-1 bg-white border border-blue-200 rounded px-2 py-1 text-xs"
+                    placeholder="value"
+                  />
+                  <button onClick={() => deleteAttribute(key)} className="text-red-500 hover:text-red-700">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const FunctionBlock = ({ funcDef, onUpdate, onDelete }: {
+  funcDef: FuncDef;
+  onUpdate: (updated: FuncDef) => void;
+  onDelete: () => void;
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  return (
+    <div className="bg-purple-50 border-2 border-purple-300 rounded-lg p-3 mb-2 shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 flex-1">
+          <div className="bg-purple-500 text-white px-2 py-1 rounded text-xs font-bold">fn</div>
+          <input
+            type="text"
+            value={funcDef.name}
+            onChange={(e) => onUpdate({ ...funcDef, name: e.target.value })}
+            className="flex-1 bg-white border border-purple-300 rounded px-2 py-1 text-sm font-bold"
+            placeholder="functionName"
+          />
+        </div>
+        <button onClick={onDelete} className="text-red-500 hover:text-red-700 ml-2">
+          <Trash2 size={16} />
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div className="ml-6 space-y-2">
+          {/* Signature */}
+          <div>
+            <label className="text-xs text-slate-600">Signature (domain → codomain):</label>
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="text"
+                value={funcDef.dom.join(', ')}
+                onChange={(e) => onUpdate({ ...funcDef, dom: e.target.value.split(',').map(s => s.trim()).filter(s => s) })}
+                className="flex-1 bg-white border border-purple-200 rounded px-2 py-1 text-xs"
+                placeholder="InputType1, InputType2"
+              />
+              <span className="text-xs">→</span>
+              <input
+                type="text"
+                value={funcDef.cod}
+                onChange={(e) => onUpdate({ ...funcDef, cod: e.target.value })}
+                className="flex-1 bg-white border border-purple-200 rounded px-2 py-1 text-xs"
+                placeholder="OutputType"
+              />
+            </div>
+          </div>
+
+          {/* Implementation */}
+          <div>
+            <label className="text-xs text-slate-600">Implementation:</label>
+            <div className="flex items-center gap-2 mt-1">
+              <select
+                value={funcDef.impl.type}
+                onChange={(e) => onUpdate({ ...funcDef, impl: { ...funcDef.impl, type: e.target.value as any } })}
+                className="bg-white border border-purple-200 rounded px-2 py-1 text-xs"
+              >
+                <option value="formula">formula</option>
+                <option value="json">json</option>
+                <option value="sparql">sparql</option>
+                <option value="rest">rest</option>
+                <option value="builtin">builtin</option>
+              </select>
+              <input
+                type="text"
+                value={funcDef.impl.value}
+                onChange={(e) => onUpdate({ ...funcDef, impl: { ...funcDef.impl, value: e.target.value } })}
+                className="flex-1 bg-white border border-purple-200 rounded px-2 py-1 text-xs font-mono"
+                placeholder="implementation expression"
+              />
+            </div>
+          </div>
+
+          {/* Cost & Confidence */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-slate-600">Cost:</label>
+              <input
+                type="number"
+                step="0.1"
+                value={funcDef.cost}
+                onChange={(e) => onUpdate({ ...funcDef, cost: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-purple-200 rounded px-2 py-1 text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-600">Confidence:</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={funcDef.confidence}
+                onChange={(e) => onUpdate({ ...funcDef, confidence: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-white border border-purple-200 rounded px-2 py-1 text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Documentation */}
+          <div>
+            <label className="text-xs text-slate-600">Documentation:</label>
+            <input
+              type="text"
+              value={funcDef.doc || ''}
+              onChange={(e) => onUpdate({ ...funcDef, doc: e.target.value })}
+              className="w-full bg-white border border-purple-200 rounded px-2 py-1 text-xs"
+              placeholder="説明を入力"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const BlockEditor = ({ types, funcs, onUpdate }: {
+  types: TypeDef[];
+  funcs: FuncDef[];
+  onUpdate: (types: TypeDef[], funcs: FuncDef[]) => void;
+}) => {
+  const addType = () => {
+    const newType: TypeDef = {
+      name: `NewType${types.length + 1}`,
+      attrs: {},
+      isProduct: false,
+      components: []
+    };
+    onUpdate([...types, newType], funcs);
+  };
+
+  const addFunction = () => {
+    const newFunc: FuncDef = {
+      name: `newFunc${funcs.length + 1}`,
+      dom: [],
+      cod: '',
+      cost: 1,
+      confidence: 1,
+      impl: { type: 'formula', value: '' },
+      doc: ''
+    };
+    onUpdate(types, [...funcs, newFunc]);
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
+      {/* Types Section */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+            <Box size={14} />
+            Types
+          </h3>
+          <button
+            onClick={addType}
+            className="flex items-center gap-1 px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+          >
+            <Plus size={12} />
+            Add Type
+          </button>
+        </div>
+        {types.map((type, idx) => (
+          <TypeBlock
+            key={idx}
+            typeDef={type}
+            onUpdate={(updated) => {
+              const newTypes = [...types];
+              newTypes[idx] = updated;
+              onUpdate(newTypes, funcs);
+            }}
+            onDelete={() => {
+              const newTypes = types.filter((_, i) => i !== idx);
+              onUpdate(newTypes, funcs);
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Functions Section */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+            <Settings size={14} />
+            Functions
+          </h3>
+          <button
+            onClick={addFunction}
+            className="flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs hover:bg-purple-600"
+          >
+            <Plus size={12} />
+            Add Function
+          </button>
+        </div>
+        {funcs.map((func, idx) => (
+          <FunctionBlock
+            key={idx}
+            funcDef={func}
+            onUpdate={(updated) => {
+              const newFuncs = [...funcs];
+              newFuncs[idx] = updated;
+              onUpdate(types, newFuncs);
+            }}
+            onDelete={() => {
+              const newFuncs = funcs.filter((_, i) => i !== idx);
+              onUpdate(types, newFuncs);
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
   // Improved graph layout with proper multi-argument function support
   const typeNames = Object.keys(catalog.types);
@@ -733,6 +1057,7 @@ export default function OntologySynthesisDemo() {
   const [selectedSolutionIdx, setSelectedSolutionIdx] = useState<number | null>(null);
   const [executionResult, setExecutionResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'graph' | 'pipeline'>('pipeline');
+  const [editMode, setEditMode] = useState<'text' | 'blocks'>('blocks');
 
   // Handle example selection
   const handleExampleChange = (exampleName: string) => {
@@ -745,6 +1070,45 @@ export default function OntologySynthesisDemo() {
     setSolutions([]);
     setSelectedSolutionIdx(null);
     setExecutionResult(null);
+  };
+
+  // Generate DSL text from types and funcs
+  const generateDSL = (types: TypeDef[], funcs: FuncDef[]): string => {
+    const lines: string[] = [];
+
+    // Generate type definitions
+    types.forEach(type => {
+      if (type.isProduct) {
+        lines.push(`type ${type.name} = ${type.components.join(' x ')}`);
+      } else {
+        const attrs = Object.entries(type.attrs).map(([k, v]) => `${k}=${v}`).join(', ');
+        lines.push(`type ${type.name}${attrs ? ` [${attrs}]` : ''}`);
+      }
+    });
+
+    lines.push(''); // Empty line between types and functions
+
+    // Generate function definitions
+    funcs.forEach(func => {
+      lines.push(`fn ${func.name} {`);
+      lines.push(`  sig: ${func.dom.join(', ')} -> ${func.cod}`);
+      lines.push(`  impl: ${func.impl.type}("${func.impl.value}")`);
+      lines.push(`  cost: ${func.cost}`);
+      lines.push(`  confidence: ${func.confidence}`);
+      if (func.doc) {
+        lines.push(`  doc: "${func.doc}"`);
+      }
+      lines.push(`}`);
+      lines.push('');
+    });
+
+    return lines.join('\n');
+  };
+
+  // Handle block updates
+  const handleBlockUpdate = (types: TypeDef[], funcs: FuncDef[]) => {
+    const newDsl = generateDSL(types, funcs);
+    setDsl(newDsl);
   };
 
   // Load DSL on change
@@ -820,16 +1184,44 @@ export default function OntologySynthesisDemo() {
         </div>
 
         <div className="flex-1 flex flex-col min-h-0">
+          {/* Mode Toggle */}
           <div className="bg-slate-100 text-xs px-4 py-2 font-bold text-slate-600 flex justify-between items-center border-b border-slate-200">
             <span>DSL DEFINITION</span>
-            <Code size={14} />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setEditMode('blocks')}
+                className={`px-2 py-1 rounded flex items-center gap-1 ${editMode === 'blocks' ? 'bg-blue-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-200'}`}
+                title="Block Editor"
+              >
+                <Box size={12} />
+                Blocks
+              </button>
+              <button
+                onClick={() => setEditMode('text')}
+                className={`px-2 py-1 rounded flex items-center gap-1 ${editMode === 'text' ? 'bg-blue-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-200'}`}
+                title="Text Editor"
+              >
+                <FileText size={12} />
+                Text
+              </button>
+            </div>
           </div>
-          <textarea
-            className="flex-1 bg-white p-4 font-mono text-sm resize-none focus:outline-none focus:ring-1 ring-blue-500 text-slate-800 leading-relaxed"
-            value={dsl}
-            onChange={(e) => setDsl(e.target.value)}
-            spellCheck={false}
-          />
+
+          {/* Editor Content */}
+          {editMode === 'text' ? (
+            <textarea
+              className="flex-1 bg-white p-4 font-mono text-sm resize-none focus:outline-none focus:ring-1 ring-blue-500 text-slate-800 leading-relaxed"
+              value={dsl}
+              onChange={(e) => setDsl(e.target.value)}
+              spellCheck={false}
+            />
+          ) : (
+            <BlockEditor
+              types={Object.values(catalog.types)}
+              funcs={catalog.funcs}
+              onUpdate={handleBlockUpdate}
+            />
+          )}
         </div>
 
         <div className="p-4 border-t border-slate-200 bg-white space-y-4 shadow-sm z-10">
