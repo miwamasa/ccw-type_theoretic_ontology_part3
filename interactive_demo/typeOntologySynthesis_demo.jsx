@@ -1057,7 +1057,7 @@ export default function OntologySynthesisDemo() {
   const [selectedSolutionIdx, setSelectedSolutionIdx] = useState<number | null>(null);
   const [executionResult, setExecutionResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'graph' | 'pipeline'>('pipeline');
-  const [editMode, setEditMode] = useState<'text' | 'blocks'>('blocks');
+  const [editMode, setEditMode] = useState<'text' | 'blocks'>('text');
 
   // Handle example selection
   const handleExampleChange = (exampleName: string) => {
