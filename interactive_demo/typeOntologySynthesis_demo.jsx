@@ -15,7 +15,8 @@ import {
   Trash2,
   Plus,
   X,
-  FileText
+  FileText,
+  HelpCircle
 } from 'lucide-react';
 
 // --- Types ---
@@ -518,6 +519,210 @@ const executePipeline = (node: SynthesisNode, context: any): any => {
 };
 
 // --- Components ---
+
+// Help Modal Component
+const HelpModal = ({ isOpen, onClose, topic }: {
+  isOpen: boolean;
+  onClose: () => void;
+  topic: 'dsl' | 'synthesis' | 'execution' | 'blocks';
+}) => {
+  if (!isOpen) return null;
+
+  const helpContent = {
+    dsl: {
+      title: 'DSL 文法ガイド',
+      content: (
+        <>
+          <h3 className="font-bold text-md mb-2">型定義 (Type)</h3>
+          <div className="bg-slate-100 p-2 rounded mb-3 font-mono text-xs">
+            <div>type TypeName</div>
+            <div>type TypeName [attr1=value1, attr2=value2]</div>
+            <div>type ProductType = TypeA x TypeB x TypeC</div>
+          </div>
+          <ul className="list-disc ml-5 mb-4 text-sm space-y-1">
+            <li><strong>基本型</strong>: <code>type Product</code></li>
+            <li><strong>属性付き型</strong>: <code>type Energy [unit=J, range=&gt;=0]</code></li>
+            <li><strong>積型</strong>: <code>type AllScopes = Scope1 x Scope2 x Scope3</code></li>
+          </ul>
+
+          <h3 className="font-bold text-md mb-2">関数定義 (Function)</h3>
+          <div className="bg-slate-100 p-2 rounded mb-3 font-mono text-xs">
+            <div>fn functionName &#123;</div>
+            <div>  sig: InputType -&gt; OutputType</div>
+            <div>  impl: formula("expression")</div>
+            <div>  cost: 1.0</div>
+            <div>  confidence: 0.95</div>
+            <div>  doc: "説明"</div>
+            <div>&#125;</div>
+          </div>
+          <ul className="list-disc ml-5 mb-4 text-sm space-y-1">
+            <li><strong>sig</strong>: 関数の型シグネチャ（入力 → 出力）</li>
+            <li><strong>impl</strong>: 実装方式（formula/json/sparql/rest）</li>
+            <li><strong>cost</strong>: 実行コスト（数値）</li>
+            <li><strong>confidence</strong>: 信頼度（0.0〜1.0）</li>
+          </ul>
+
+          <h3 className="font-bold text-md mb-2">複数入力関数</h3>
+          <div className="bg-slate-100 p-2 rounded mb-3 font-mono text-xs">
+            <div>sig: TypeA, TypeB, TypeC -&gt; OutputType</div>
+            <div>impl: formula("arg0 + arg1 + arg2")</div>
+          </div>
+        </>
+      )
+    },
+    blocks: {
+      title: 'ブロックエディタの使い方',
+      content: (
+        <>
+          <h3 className="font-bold text-md mb-2 flex items-center gap-2">
+            <div className="bg-blue-500 text-white px-2 py-1 rounded text-xs">type</div>
+            型ブロック
+          </h3>
+          <ul className="list-disc ml-5 mb-4 text-sm space-y-1">
+            <li><strong>型名</strong>を直接編集可能</li>
+            <li><strong>Product Type</strong>チェックで積型に変換</li>
+            <li><strong>属性</strong>を追加・編集・削除（key=value形式）</li>
+            <li>右上の<Trash2 size={12} className="inline"/>で削除</li>
+          </ul>
+
+          <h3 className="font-bold text-md mb-2 flex items-center gap-2">
+            <div className="bg-purple-500 text-white px-2 py-1 rounded text-xs">fn</div>
+            関数ブロック
+          </h3>
+          <ul className="list-disc ml-5 mb-4 text-sm space-y-1">
+            <li><strong>関数名</strong>を直接編集</li>
+            <li><strong>Signature</strong>: 入力型 → 出力型（カンマ区切りで複数入力可）</li>
+            <li><strong>Implementation</strong>: 実装タイプと式を指定</li>
+            <li><strong>Cost/Confidence</strong>: コストと信頼度を調整</li>
+          </ul>
+
+          <h3 className="font-bold text-md mb-2">操作</h3>
+          <ul className="list-disc ml-5 text-sm space-y-1">
+            <li><strong>Add Type/Function</strong>ボタンで追加</li>
+            <li><strong>Text/Blocksボタン</strong>でモード切替</li>
+            <li>ブロック編集はDSLテキストに自動反映</li>
+          </ul>
+        </>
+      )
+    },
+    synthesis: {
+      title: 'パス探索とは',
+      content: (
+        <>
+          <h3 className="font-bold text-md mb-2">型居住問題 (Type Inhabitation)</h3>
+          <p className="mb-3 text-sm">
+            ソース型からゴール型への変換経路を、定義された関数を組み合わせて自動的に探索します。
+            これは型理論における<strong>型居住問題</strong>の解決です。
+          </p>
+
+          <h3 className="font-bold text-md mb-2">探索アルゴリズム</h3>
+          <ul className="list-disc ml-5 mb-4 text-sm space-y-1">
+            <li><strong>後方推論</strong>: ゴール型から逆向きに探索</li>
+            <li><strong>コスト最小化</strong>: 最もコストの低いパスを優先</li>
+            <li><strong>信頼度計算</strong>: パス全体の信頼度を乗算で算出</li>
+            <li><strong>複数解</strong>: 異なるパスがあれば全て列挙</li>
+          </ul>
+
+          <h3 className="font-bold text-md mb-2">探索例</h3>
+          <div className="bg-slate-100 p-3 rounded mb-3 text-xs">
+            <div className="font-bold mb-2">Product → CO2 を探索</div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="bg-emerald-100 px-2 py-1 rounded">Product</span>
+              <ArrowRight size={12} />
+              <span className="bg-blue-100 px-2 py-1 rounded">usesEnergy</span>
+              <ArrowRight size={12} />
+              <span className="bg-indigo-100 px-2 py-1 rounded">Energy</span>
+              <ArrowRight size={12} />
+              <span className="bg-blue-100 px-2 py-1 rounded">energyToCO2</span>
+              <ArrowRight size={12} />
+              <span className="bg-emerald-100 px-2 py-1 rounded">CO2</span>
+            </div>
+            <div className="text-slate-600 mt-2">
+              Cost: 2.0, Confidence: 85.5%
+            </div>
+          </div>
+
+          <h3 className="font-bold text-md mb-2">パス選択</h3>
+          <p className="text-sm">
+            複数のパスが見つかった場合、<strong>最もコストが低く、信頼度が高い</strong>パスが「Best」として推奨されます。
+          </p>
+        </>
+      )
+    },
+    execution: {
+      title: '実行と結果の見方',
+      content: (
+        <>
+          <h3 className="font-bold text-md mb-2">実行の仕組み</h3>
+          <p className="mb-3 text-sm">
+            選択したパスに沿って、関数を順番に実行します。
+            各関数は入力値を受け取り、<code>impl</code>で定義された式を評価して出力を生成します。
+          </p>
+
+          <h3 className="font-bold text-md mb-2">入力データ形式</h3>
+          <div className="bg-slate-100 p-2 rounded mb-3 font-mono text-xs">
+            <div>&#123;</div>
+            <div>  "SourceType": value,</div>
+            <div>  "SourceType": &#123; "prop1": val1, "prop2": val2 &#125;</div>
+            <div>&#125;</div>
+          </div>
+          <ul className="list-disc ml-5 mb-4 text-sm space-y-1">
+            <li><strong>数値</strong>: <code>"Product": 1000</code></li>
+            <li><strong>オブジェクト</strong>: <code>"Facility": &#123; "fuel": 400, "elec": 3000 &#125;</code></li>
+          </ul>
+
+          <h3 className="font-bold text-md mb-2">Formula実装での変数</h3>
+          <ul className="list-disc ml-5 mb-4 text-sm space-y-1">
+            <li><code>value</code>: 単一入力の値</li>
+            <li><code>arg0, arg1, arg2</code>: 複数入力の各値</li>
+            <li><code>fuel, elec, weight</code>: 入力オブジェクトのプロパティ</li>
+          </ul>
+
+          <h3 className="font-bold text-md mb-2">結果の表示</h3>
+          <div className="bg-emerald-50 border border-emerald-200 p-2 rounded text-sm mb-2">
+            <span className="text-slate-600 font-bold">Result:</span>
+            <span className="text-emerald-600 ml-2 font-mono">2620</span>
+          </div>
+          <p className="text-sm">
+            最終的な計算結果が表示されます。エラーの場合はエラーメッセージが表示されます。
+          </p>
+        </>
+      )
+    }
+  };
+
+  const content = helpContent[topic];
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-blue-50">
+          <h2 className="text-lg font-bold text-blue-900 flex items-center gap-2">
+            <HelpCircle size={20} />
+            {content.title}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-slate-500 hover:text-slate-700"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          {content.content}
+        </div>
+        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Block Editor Components
 const TypeBlock = ({ typeDef, onUpdate, onDelete }: {
@@ -1058,6 +1263,7 @@ export default function OntologySynthesisDemo() {
   const [executionResult, setExecutionResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'graph' | 'pipeline'>('pipeline');
   const [editMode, setEditMode] = useState<'text' | 'blocks'>('text');
+  const [helpTopic, setHelpTopic] = useState<'dsl' | 'synthesis' | 'execution' | 'blocks' | null>(null);
 
   // Handle example selection
   const handleExampleChange = (exampleName: string) => {
@@ -1155,7 +1361,13 @@ export default function OntologySynthesisDemo() {
   const typeOptions = Object.keys(catalog.types);
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
+    <>
+      <HelpModal
+        isOpen={helpTopic !== null}
+        onClose={() => setHelpTopic(null)}
+        topic={helpTopic || 'dsl'}
+      />
+      <div className="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
       
       {/* Left Panel: DSL & Config */}
       <div className="w-1/3 flex flex-col border-r border-slate-200">
@@ -1186,7 +1398,16 @@ export default function OntologySynthesisDemo() {
         <div className="flex-1 flex flex-col min-h-0">
           {/* Mode Toggle */}
           <div className="bg-slate-100 text-xs px-4 py-2 font-bold text-slate-600 flex justify-between items-center border-b border-slate-200">
-            <span>DSL DEFINITION</span>
+            <div className="flex items-center gap-2">
+              <span>DSL DEFINITION</span>
+              <button
+                onClick={() => setHelpTopic(editMode === 'text' ? 'dsl' : 'blocks')}
+                className="text-blue-500 hover:text-blue-700"
+                title="ヘルプを表示"
+              >
+                <HelpCircle size={14} />
+              </button>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setEditMode('blocks')}
@@ -1248,13 +1469,22 @@ export default function OntologySynthesisDemo() {
             </div>
           </div>
 
-          <button
-            onClick={handleSolve}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded flex items-center justify-center gap-2 font-bold transition-colors shadow-sm"
-          >
-            <Zap size={16} />
-            パス探索 (Synthesize)
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSolve}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded flex items-center justify-center gap-2 font-bold transition-colors shadow-sm"
+            >
+              <Zap size={16} />
+              パス探索 (Synthesize)
+            </button>
+            <button
+              onClick={() => setHelpTopic('synthesis')}
+              className="bg-white border border-blue-600 text-blue-600 hover:bg-blue-50 p-2 rounded"
+              title="パス探索のヘルプ"
+            >
+              <HelpCircle size={20} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1336,9 +1566,18 @@ export default function OntologySynthesisDemo() {
 
                   {/* Execution Area */}
                   <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-2 mb-3 text-sm font-bold text-slate-700">
-                      <Database size={16} />
-                      実行データ入力 (Input Context JSON)
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                        <Database size={16} />
+                        実行データ入力 (Input Context JSON)
+                      </div>
+                      <button
+                        onClick={() => setHelpTopic('execution')}
+                        className="text-blue-500 hover:text-blue-700"
+                        title="実行と結果のヘルプ"
+                      >
+                        <HelpCircle size={16} />
+                      </button>
                     </div>
                     <div className="flex gap-4 h-32">
                       <textarea 
@@ -1370,5 +1609,6 @@ export default function OntologySynthesisDemo() {
         </div>
       </div>
     </div>
+    </>
   );
 }
