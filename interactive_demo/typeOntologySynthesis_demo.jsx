@@ -467,15 +467,41 @@ const executePipeline = (node: SynthesisNode, context: any): any => {
   // Simulation Logic based on impl type
   switch (f.impl.type) {
     case 'formula':
-      // Very basic formula parser for demo (arg0 + arg1 etc)
+      // Parse and evaluate formula
       // Safety: In a real app, do not use Function/eval loosely.
       try {
-        const formula = f.impl.value
-          .replace(/arg(\d+)/g, (_, idx) => JSON.stringify(inputValues[parseInt(idx)]));
+        // Remove variable assignment if present (e.g., "energy = value * 1.0" -> "value * 1.0")
+        let formula = f.impl.value;
+        const assignMatch = formula.match(/^\s*\w+\s*=\s*(.+)$/);
+        if (assignMatch) {
+          formula = assignMatch[1];
+        }
+
+        // Build scope: add properties from input objects
+        const scope: Record<string, any> = {};
+        inputValues.forEach((val, idx) => {
+          scope[`arg${idx}`] = val;
+          // If input is an object, spread its properties into scope
+          if (typeof val === 'object' && val !== null) {
+            Object.assign(scope, val);
+          }
+        });
+
+        // Special handling for single input: make it available as "value"
+        if (inputValues.length === 1) {
+          scope.value = inputValues[0];
+        }
+
+        // Create function with scope
+        const scopeKeys = Object.keys(scope);
+        const scopeValues = Object.values(scope);
+        const funcBody = `return (${formula})`;
+
         // eslint-disable-next-line no-new-func
-        return new Function(`return ${formula}`)();
+        const fn = new Function(...scopeKeys, funcBody);
+        return fn(...scopeValues);
       } catch (e) {
-        return `Error evaluating ${formula}`;
+        return `Error evaluating formula: ${e instanceof Error ? e.message : String(e)}`;
       }
     case 'rest':
     case 'sparql':
