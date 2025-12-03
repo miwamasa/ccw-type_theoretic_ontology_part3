@@ -1045,30 +1045,153 @@ const BlockEditor = ({ types, funcs, onUpdate }: {
 };
 
 const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
-  // Improved graph layout with proper multi-argument function support
   const typeNames = Object.keys(catalog.types);
   const nodeRadius = 35;
   const viewWidth = 800;
   const viewHeight = 500;
 
-  // Layered layout: arrange types in layers based on dependencies
-  const typePositions: Record<string, {x: number, y: number}> = {};
+  // Calculate initial positions using improved layout
+  const getInitialPositions = (): Record<string, {x: number, y: number}> => {
+    const positions: Record<string, {x: number, y: number}> = {};
 
-  // Simple horizontal layout with vertical spread
-  typeNames.forEach((typeName, i) => {
-    const col = i % 4;
-    const row = Math.floor(i / 4);
-    typePositions[typeName] = {
-      x: 100 + col * 200,
-      y: 80 + row * 120
-    };
-  });
+    // Build dependency graph
+    const incomingEdges: Record<string, number> = {};
+    const outgoingEdges: Record<string, string[]> = {};
+
+    typeNames.forEach(t => {
+      incomingEdges[t] = 0;
+      outgoingEdges[t] = [];
+    });
+
+    catalog.funcs.forEach(f => {
+      f.dom.forEach(domType => {
+        if (outgoingEdges[domType]) {
+          outgoingEdges[domType].push(f.cod);
+        }
+      });
+      if (incomingEdges[f.cod] !== undefined) {
+        incomingEdges[f.cod] += f.dom.length;
+      }
+    });
+
+    // Assign layers (topological sort-like)
+    const layers: string[][] = [];
+    const remaining = new Set(typeNames);
+
+    while (remaining.size > 0) {
+      const currentLayer: string[] = [];
+
+      for (const typeName of remaining) {
+        // Check if all dependencies are already placed
+        const deps = catalog.funcs
+          .filter(f => f.cod === typeName)
+          .flatMap(f => f.dom);
+
+        const allDepsPlaced = deps.every(d => !remaining.has(d));
+
+        if (allDepsPlaced) {
+          currentLayer.push(typeName);
+        }
+      }
+
+      if (currentLayer.length === 0) {
+        // No progress, place remaining nodes in final layer
+        layers.push(Array.from(remaining));
+        break;
+      }
+
+      layers.push(currentLayer);
+      currentLayer.forEach(t => remaining.delete(t));
+    }
+
+    // Position nodes by layer
+    layers.forEach((layer, layerIdx) => {
+      const layerX = 100 + layerIdx * 180;
+      const totalHeight = (layer.length - 1) * 100;
+      const startY = (viewHeight - totalHeight) / 2;
+
+      layer.forEach((typeName, idx) => {
+        positions[typeName] = {
+          x: layerX,
+          y: Math.max(80, Math.min(viewHeight - 80, startY + idx * 100))
+        };
+      });
+    });
+
+    return positions;
+  };
+
+  const [typePositions, setTypePositions] = useState<Record<string, {x: number, y: number}>>(getInitialPositions);
+  const [draggingNode, setDraggingNode] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState<{x: number, y: number}>({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // Reset positions when catalog changes
+  useEffect(() => {
+    setTypePositions(getInitialPositions());
+  }, [catalog]);
+
+  const handleNodeMouseDown = (typeName: string, e: React.MouseEvent<SVGGElement>) => {
+    e.stopPropagation();
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const point = svg.createSVGPoint();
+    point.x = e.clientX;
+    point.y = e.clientY;
+    const svgPoint = point.matrixTransform(svg.getScreenCTM()?.inverse());
+
+    const pos = typePositions[typeName];
+    setDragOffset({
+      x: svgPoint.x - pos.x,
+      y: svgPoint.y - pos.y
+    });
+    setDraggingNode(typeName);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!draggingNode) return;
+
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const point = svg.createSVGPoint();
+    point.x = e.clientX;
+    point.y = e.clientY;
+    const svgPoint = point.matrixTransform(svg.getScreenCTM()?.inverse());
+
+    setTypePositions(prev => ({
+      ...prev,
+      [draggingNode]: {
+        x: Math.max(50, Math.min(viewWidth - 50, svgPoint.x - dragOffset.x)),
+        y: Math.max(50, Math.min(viewHeight - 50, svgPoint.y - dragOffset.y))
+      }
+    }));
+  };
+
+  const handleMouseUp = () => {
+    setDraggingNode(null);
+  };
 
   return (
-    <div className="relative w-full h-full bg-white overflow-hidden border border-slate-200 rounded-lg flex items-center justify-center p-4 shadow-sm">
-      <div className="text-slate-400 absolute top-2 right-2 text-xs">カタロググラフ (type_synthesis互換)</div>
+    <div className="relative w-full h-full bg-white overflow-hidden border border-slate-200 rounded-lg flex flex-col items-center justify-center p-4 shadow-sm">
+      <div className="text-slate-400 absolute top-2 right-2 text-xs">カタロググラフ (ドラッグで移動可能)</div>
+      <button
+        onClick={() => setTypePositions(getInitialPositions())}
+        className="absolute top-2 left-2 text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
+        title="レイアウトをリセット"
+      >
+        リセット
+      </button>
 
-      <svg className="w-full h-full" viewBox={`0 0 ${viewWidth} ${viewHeight}`}>
+      <svg
+        ref={svgRef}
+        className="w-full h-full"
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
@@ -1093,6 +1216,9 @@ const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
                 const dx = endPos.x - startPos.x;
                 const dy = endPos.y - startPos.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist === 0) return null;
+
                 const offsetStart = nodeRadius / dist;
                 const offsetEnd = nodeRadius / dist;
 
@@ -1123,6 +1249,7 @@ const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
                           fontSize="9"
                           fontWeight="bold"
                           textAnchor="middle"
+                          style={{ pointerEvents: 'none' }}
                         >
                           {f.name}
                         </text>
@@ -1132,6 +1259,7 @@ const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
                           fill="#64748b"
                           fontSize="8"
                           textAnchor="middle"
+                          style={{ pointerEvents: 'none' }}
                         >
                           cost: {f.cost} | conf: {(f.confidence * 100).toFixed(0)}%
                         </text>
@@ -1149,17 +1277,23 @@ const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
           const pos = typePositions[typeName];
           const typeDef = catalog.types[typeName];
           const hasAttrs = Object.keys(typeDef.attrs).length > 0;
+          const isDragging = draggingNode === typeName;
 
           return (
-            <g key={typeName}>
+            <g
+              key={typeName}
+              onMouseDown={(e) => handleNodeMouseDown(typeName, e)}
+              style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+            >
               {/* Node circle */}
               <circle
                 cx={pos.x}
                 cy={pos.y}
                 r={nodeRadius}
                 fill={typeDef.isProduct ? "#fef3c7" : "#dbeafe"}
-                stroke={typeDef.isProduct ? "#f59e0b" : "#3b82f6"}
-                strokeWidth="2.5"
+                stroke={isDragging ? "#ef4444" : (typeDef.isProduct ? "#f59e0b" : "#3b82f6")}
+                strokeWidth={isDragging ? "3" : "2.5"}
+                style={{ filter: isDragging ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' : 'none' }}
               />
               {/* Type name */}
               <text
@@ -1170,6 +1304,7 @@ const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
                 fill="#1e293b"
                 fontSize="11"
                 fontWeight="bold"
+                style={{ pointerEvents: 'none' }}
               >
                 {typeName.length > 12 ? typeName.substring(0, 10) + '...' : typeName}
               </text>
@@ -1181,6 +1316,7 @@ const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
                   textAnchor="middle"
                   fill="#64748b"
                   fontSize="7"
+                  style={{ pointerEvents: 'none' }}
                 >
                   [{Object.entries(typeDef.attrs).slice(0, 1).map(([k, v]) => `${k}=${v}`).join(', ')}]
                 </text>
@@ -1194,6 +1330,7 @@ const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
                   fill="#f59e0b"
                   fontSize="8"
                   fontWeight="bold"
+                  style={{ pointerEvents: 'none' }}
                 >
                   ×
                 </text>
