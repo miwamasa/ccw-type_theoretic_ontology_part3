@@ -259,7 +259,13 @@ const parseDSL = (text: string): Catalog => {
       const typeStr = line.substring(5).trim();
 
       // Check for Product Type: type AllScopes = A x B x C
-      if (typeStr.includes('=')) {
+      // Must distinguish from attributes: type CO2 [unit=kg]
+      // Product type has '=' before any '[', or no '[' at all
+      const bracketPos = typeStr.indexOf('[');
+      const equalsPos = typeStr.indexOf('=');
+      const isProductType = equalsPos !== -1 && (bracketPos === -1 || equalsPos < bracketPos);
+
+      if (isProductType) {
         const [name, componentStr] = typeStr.split('=').map(s => s.trim());
         const components = componentStr.split(/\s*[x×]\s*/).map(s => s.trim());
         types[name] = {
