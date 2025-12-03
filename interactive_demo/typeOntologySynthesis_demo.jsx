@@ -240,7 +240,7 @@ const DEFAULT_INPUT_DATA = JSON.stringify(EXAMPLES[DEFAULT_EXAMPLE].inputData, n
 
 const parseDSL = (text: string): Catalog => {
   const types: Record<string, TypeDef> = {};
-  const funcs: FuncDef[] = {};
+  const funcs: FuncDef[] = [];
 
   const lines = text.split('\n');
   let i = 0;
