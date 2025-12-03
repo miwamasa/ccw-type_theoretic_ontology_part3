@@ -701,8 +701,8 @@ export default function OntologySynthesisDemo() {
   const [dsl, setDsl] = useState(DEFAULT_DSL);
   const [inputDataJson, setInputDataJson] = useState(DEFAULT_INPUT_DATA);
   const [catalog, setCatalog] = useState<Catalog>({ types: {}, funcs: [] });
-  const [sourceType, setSourceType] = useState<string>('');
-  const [targetType, setTargetType] = useState<string>('');
+  const [sourceType, setSourceType] = useState<string>(EXAMPLES[DEFAULT_EXAMPLE].source);
+  const [targetType, setTargetType] = useState<string>(EXAMPLES[DEFAULT_EXAMPLE].target);
   const [solutions, setSolutions] = useState<SynthesisNode[]>([]);
   const [selectedSolutionIdx, setSelectedSolutionIdx] = useState<number | null>(null);
   const [executionResult, setExecutionResult] = useState<string | null>(null);
@@ -714,6 +714,8 @@ export default function OntologySynthesisDemo() {
     const example = EXAMPLES[exampleName];
     setDsl(example.dsl);
     setInputDataJson(JSON.stringify(example.inputData, null, 2));
+    setSourceType(example.source);
+    setTargetType(example.target);
     setSolutions([]);
     setSelectedSolutionIdx(null);
     setExecutionResult(null);
