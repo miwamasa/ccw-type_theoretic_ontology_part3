@@ -68,7 +68,7 @@ type CO2 [unit=kg]
 
 fn usesEnergy {
   sig: Product -> Energy
-  impl: formula("energy = value * 1.0")
+  impl: formula("value * 1.0")
   cost: 1
   confidence: 0.9
   doc: "製品のエネルギー使用量"
@@ -76,7 +76,7 @@ fn usesEnergy {
 
 fn energyToCO2 {
   sig: Energy -> CO2
-  impl: formula("co2 = energy * 0.5")
+  impl: formula("value * 0.5")
   cost: 1
   confidence: 0.95
   doc: "エネルギーからCO2排出量を計算"
@@ -100,7 +100,7 @@ type ElectricityUsage [unit=kWh, range=>=0]
 
 fn usesEnergy {
   sig: Product -> Energy
-  impl: formula("energy = value * 1.0")
+  impl: formula("value * 1.0")
   cost: 1
   confidence: 0.9
   doc: "製品のエネルギー使用量を取得"
@@ -108,7 +108,7 @@ fn usesEnergy {
 
 fn energyToFuel {
   sig: Energy -> Fuel
-  impl: formula("fuel = energy / 0.35")
+  impl: formula("value / 0.35")
   cost: 3
   confidence: 0.8
   doc: "エネルギーから燃料消費量を推定"
@@ -116,7 +116,7 @@ fn energyToFuel {
 
 fn fuelToCO2 {
   sig: Fuel -> CO2
-  impl: formula("co2 = fuel * 2.5")
+  impl: formula("value * 2.5")
   cost: 1
   confidence: 0.98
   doc: "燃料消費量からCO2排出量を計算"
@@ -124,7 +124,7 @@ fn fuelToCO2 {
 
 fn usesElectricity {
   sig: Product -> ElectricityUsage
-  impl: formula("elec = value * 0.8")
+  impl: formula("value * 0.8")
   cost: 1
   confidence: 0.85
   doc: "製品の電力使用量を取得"
@@ -132,7 +132,7 @@ fn usesElectricity {
 
 fn electricityToCO2 {
   sig: ElectricityUsage -> CO2
-  impl: formula("co2 = value * 0.5")
+  impl: formula("value * 0.5")
   cost: 1
   confidence: 0.95
   doc: "電力使用量からCO2排出量を計算"
@@ -157,7 +157,7 @@ type TotalGHGEmissions [unit=kg-CO2]
 
 fn facilityToScope1 {
   sig: Facility -> Scope1Emissions
-  impl: formula("scope1 = fuel * 2.5")
+  impl: formula("fuel * 2.5")
   cost: 2
   confidence: 0.9
   doc: "Scope1直接排出"
@@ -165,7 +165,7 @@ fn facilityToScope1 {
 
 fn facilityToScope2 {
   sig: Facility -> Scope2Emissions
-  impl: formula("scope2 = elec * 0.5")
+  impl: formula("elec * 0.5")
   cost: 2
   confidence: 0.95
   doc: "Scope2間接排出"
@@ -173,7 +173,7 @@ fn facilityToScope2 {
 
 fn facilityToScope3 {
   sig: Facility -> Scope3Emissions
-  impl: formula("scope3 = value * 0.3")
+  impl: formula("(fuel + elec) * 0.3")
   cost: 5
   confidence: 0.7
   doc: "Scope3その他排出"
@@ -181,7 +181,7 @@ fn facilityToScope3 {
 
 fn aggregateScopes {
   sig: Scope1Emissions, Scope2Emissions, Scope3Emissions -> TotalGHGEmissions
-  impl: formula("total = arg0 + arg1 + arg2")
+  impl: formula("arg0 + arg1 + arg2")
   cost: 1
   confidence: 1.0
   doc: "3つのスコープを合計"
@@ -206,7 +206,7 @@ type ComplianceReport
 
 fn aggregateProcurement {
   sig: RawMaterial -> ProcurementData
-  impl: formula("data = weight * 0.01")
+  impl: formula("weight * 0.01")
   cost: 2
   confidence: 0.95
   doc: "調達フェーズデータ集計"
@@ -214,7 +214,7 @@ fn aggregateProcurement {
 
 fn aggregateManufacturing {
   sig: ProcurementData -> ManufacturingData
-  impl: formula("mfg = value * 0.8")
+  impl: formula("value * 0.8")
   cost: 2
   confidence: 0.9
   doc: "製造フェーズデータ集計"
@@ -222,7 +222,7 @@ fn aggregateManufacturing {
 
 fn generateReport {
   sig: ManufacturingData -> ComplianceReport
-  impl: formula("report = value * 1.0")
+  impl: formula("value * 1.0")
   cost: 3
   confidence: 0.85
   doc: "規制準拠レポート生成"
