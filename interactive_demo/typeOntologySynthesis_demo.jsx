@@ -51,113 +51,322 @@ type SynthesisNode = {
   accumulatedConfidence: number;
 };
 
-// --- Default DSL ---
+// --- Example DSLs ---
 
-const DEFAULT_DSL = `# GHG排出量計算オントロジー例
+const EXAMPLES = {
+  "基本例": {
+    dsl: `# 基本的なCFP計算例
 
-# --- 型定義 (Type) ---
+type Product
+type Energy [unit=J]
+type CO2 [unit=kg]
+
+fn usesEnergy {
+  sig: Product -> Energy
+  impl: formula("energy = value * 1.0")
+  cost: 1
+  confidence: 0.9
+  doc: "製品のエネルギー使用量"
+}
+
+fn energyToCO2 {
+  sig: Energy -> CO2
+  impl: formula("co2 = energy * 0.5")
+  cost: 1
+  confidence: 0.95
+  doc: "エネルギーからCO2排出量を計算"
+}`,
+    inputData: {
+      "Product": 1000,
+      "Energy": 1000
+    },
+    source: "Product",
+    target: "CO2"
+  },
+
+  "CFP計算": {
+    dsl: `# CFP (Carbon Footprint) 計算
+
+type Product
+type Energy [unit=J, range=>=0]
+type Fuel [unit=kg, range=>=0]
+type CO2 [unit=kg, range=>=0]
+type ElectricityUsage [unit=kWh, range=>=0]
+
+fn usesEnergy {
+  sig: Product -> Energy
+  impl: formula("energy = value * 1.0")
+  cost: 1
+  confidence: 0.9
+  doc: "製品のエネルギー使用量を取得"
+}
+
+fn energyToFuel {
+  sig: Energy -> Fuel
+  impl: formula("fuel = energy / 0.35")
+  cost: 3
+  confidence: 0.8
+  doc: "エネルギーから燃料消費量を推定"
+}
+
+fn fuelToCO2 {
+  sig: Fuel -> CO2
+  impl: formula("co2 = fuel * 2.5")
+  cost: 1
+  confidence: 0.98
+  doc: "燃料消費量からCO2排出量を計算"
+}
+
+fn usesElectricity {
+  sig: Product -> ElectricityUsage
+  impl: formula("elec = value * 0.8")
+  cost: 1
+  confidence: 0.85
+  doc: "製品の電力使用量を取得"
+}
+
+fn electricityToCO2 {
+  sig: ElectricityUsage -> CO2
+  impl: formula("co2 = value * 0.5")
+  cost: 1
+  confidence: 0.95
+  doc: "電力使用量からCO2排出量を計算"
+}`,
+    inputData: {
+      "Product": 1000,
+      "Energy": 1000,
+      "ElectricityUsage": 800
+    },
+    source: "Product",
+    target: "CO2"
+  },
+
+  "GHG Scope統合": {
+    dsl: `# GHG Scope 1,2,3 統合
+
 type Facility
-  attr unit:string
-  attr id:string
+type Scope1Emissions [unit=kg-CO2]
+type Scope2Emissions [unit=kg-CO2]
+type Scope3Emissions [unit=kg-CO2]
+type TotalGHGEmissions [unit=kg-CO2]
 
-type PowerUsage
-  attr unit:kWh
+fn facilityToScope1 {
+  sig: Facility -> Scope1Emissions
+  impl: formula("scope1 = fuel * 2.5")
+  cost: 2
+  confidence: 0.9
+  doc: "Scope1直接排出"
+}
 
-type EmissionFactor
-  attr unit:kg-CO2/kWh
+fn facilityToScope2 {
+  sig: Facility -> Scope2Emissions
+  impl: formula("scope2 = elec * 0.5")
+  cost: 2
+  confidence: 0.95
+  doc: "Scope2間接排出"
+}
 
-type TotalGHG
-  attr unit:kg-CO2
+fn facilityToScope3 {
+  sig: Facility -> Scope3Emissions
+  impl: formula("scope3 = value * 0.3")
+  cost: 5
+  confidence: 0.7
+  doc: "Scope3その他排出"
+}
 
-# --- 関数定義 (Fn) ---
+fn aggregateScopes {
+  sig: Scope1Emissions, Scope2Emissions, Scope3Emissions -> TotalGHGEmissions
+  impl: formula("total = arg0 + arg1 + arg2")
+  cost: 1
+  confidence: 1.0
+  doc: "3つのスコープを合計"
+}`,
+    inputData: {
+      "Facility": { "fuel": 400, "elec": 3000 },
+      "Scope1Emissions": 1000,
+      "Scope2Emissions": 1500,
+      "Scope3Emissions": 120
+    },
+    source: "Facility",
+    target: "TotalGHGEmissions"
+  },
 
-# 施設のIDから電力使用量を取得 (Mock DB/API)
-fn lookupUsage(Facility) -> PowerUsage
-  cost 1.0
-  conf 0.9
-  impl rest:GET /api/usage/{id}
-  doc 施設IDに基づいて電力消費量を取得
+  "化学物質情報伝達": {
+    dsl: `# 化学物質情報伝達レポート生成
 
-# 地域ごとの排出係数を取得
-fn lookupFactor(Facility) -> EmissionFactor
-  cost 0.5
-  conf 0.95
-  impl sparql:SELECT ?factor WHERE { ?f hasRegion ?r . ?r hasFactor ?factor }
-  doc 施設の地域係数をDBから取得
+type RawMaterial
+type ProcurementData
+type ManufacturingData
+type ComplianceReport
 
-# 排出量を計算 (使用量 x 係数)
-fn calcEmission(PowerUsage, EmissionFactor) -> TotalGHG
-  cost 0.1
-  conf 1.0
-  impl formula:arg0 * arg1
-  doc 電力使用量と係数を掛け合わせる
-`;
+fn aggregateProcurement {
+  sig: RawMaterial -> ProcurementData
+  impl: formula("data = weight * 0.01")
+  cost: 2
+  confidence: 0.95
+  doc: "調達フェーズデータ集計"
+}
 
-const DEFAULT_INPUT_DATA = JSON.stringify({
-  "Facility": { "id": "factory_01", "region": "JP-East" },
-  "lookupUsage": 1200,    // Mock result for demo
-  "lookupFactor": 0.45    // Mock result for demo
-}, null, 2);
+fn aggregateManufacturing {
+  sig: ProcurementData -> ManufacturingData
+  impl: formula("mfg = value * 0.8")
+  cost: 2
+  confidence: 0.9
+  doc: "製造フェーズデータ集計"
+}
+
+fn generateReport {
+  sig: ManufacturingData -> ComplianceReport
+  impl: formula("report = value * 1.0")
+  cost: 3
+  confidence: 0.85
+  doc: "規制準拠レポート生成"
+}`,
+    inputData: {
+      "RawMaterial": { "weight": 100, "pb_rate": 0.01 },
+      "ProcurementData": 1.0,
+      "ManufacturingData": 0.8
+    },
+    source: "RawMaterial",
+    target: "ComplianceReport"
+  }
+};
+
+const DEFAULT_EXAMPLE = "CFP計算";
+const DEFAULT_DSL = EXAMPLES[DEFAULT_EXAMPLE].dsl;
+const DEFAULT_INPUT_DATA = JSON.stringify(EXAMPLES[DEFAULT_EXAMPLE].inputData, null, 2);
 
 // --- Parser Logic (Phase 1) ---
 
 const parseDSL = (text: string): Catalog => {
   const types: Record<string, TypeDef> = {};
-  const funcs: FuncDef[] = [];
-  
+  const funcs: FuncDef[] = {};
+
   const lines = text.split('\n');
-  let currentBlock: 'none' | 'type' | 'fn' = 'none';
-  let currentObj: any = null;
+  let i = 0;
 
-  for (let line of lines) {
-    line = line.trim();
-    if (!line || line.startsWith('#')) continue;
+  while (i < lines.length) {
+    let line = lines[i].trim();
 
+    // Skip empty lines and comments
+    if (!line || line.startsWith('#')) {
+      i++;
+      continue;
+    }
+
+    // Parse type definition
     if (line.startsWith('type ')) {
-      currentBlock = 'type';
-      const parts = line.substring(5).trim().split(' ');
-      const name = parts[0];
-      // Check for Product Type (Not fully implemented in parser logic for simplicity but structure exists)
-      const isProduct = name.includes(' x '); 
-      
-      currentObj = {
-        name: name,
-        attrs: {},
-        isProduct: false,
-        components: []
-      };
-      types[name] = currentObj;
-    } else if (line.startsWith('fn ')) {
-      currentBlock = 'fn';
-      // Format: fn name(A, B) -> C
-      const match = line.match(/fn\s+(\w+)\s*\((.*?)\)\s*->\s*(\w+)/);
-      if (match) {
-        currentObj = {
-          name: match[1],
-          dom: match[2].split(',').map(s => s.trim()).filter(s => s),
-          cod: match[3].trim(),
-          cost: 0,
-          confidence: 1.0,
-          impl: { type: 'builtin', value: '' }
+      const typeStr = line.substring(5).trim();
+
+      // Check for Product Type: type AllScopes = A x B x C
+      if (typeStr.includes('=')) {
+        const [name, componentStr] = typeStr.split('=').map(s => s.trim());
+        const components = componentStr.split(/\s*[x×]\s*/).map(s => s.trim());
+        types[name] = {
+          name,
+          attrs: {},
+          isProduct: true,
+          components
         };
-        funcs.push(currentObj);
+      } else {
+        // Basic type: type TypeName [attr1=val1, attr2=val2]
+        const match = typeStr.match(/^(\w+)(?:\s*\[([^\]]+)\])?/);
+        if (match) {
+          const name = match[1];
+          const attrsStr = match[2];
+          const attrs: Record<string, string> = {};
+
+          if (attrsStr) {
+            attrsStr.split(',').forEach(pair => {
+              const [key, val] = pair.split('=').map(s => s.trim());
+              if (key && val) attrs[key] = val;
+            });
+          }
+
+          types[name] = {
+            name,
+            attrs,
+            isProduct: false,
+            components: []
+          };
+        }
       }
-    } else if (currentBlock === 'type' && line.startsWith('attr ')) {
-      const parts = line.substring(5).split(':');
-      if (parts.length === 2 && currentObj) {
-        currentObj.attrs[parts[0].trim()] = parts[1].trim();
+      i++;
+    }
+    // Parse function definition
+    else if (line.startsWith('fn ') && line.includes('{')) {
+      // fn funcName {
+      const funcName = line.substring(3, line.indexOf('{')).trim();
+      i++;
+
+      let sig = '';
+      let implType = 'builtin';
+      let implValue = '';
+      let cost = 1.0;
+      let confidence = 1.0;
+      let doc = '';
+
+      // Read function block
+      while (i < lines.length) {
+        line = lines[i].trim();
+
+        if (line === '}') {
+          i++;
+          break;
+        }
+
+        if (line.startsWith('sig:')) {
+          sig = line.substring(4).trim();
+        } else if (line.startsWith('impl:')) {
+          const implStr = line.substring(5).trim();
+          // Parse impl: formula("...") or impl: sparql("..."), etc
+          const implMatch = implStr.match(/(\w+)\s*\(\s*"([^"]*)"\s*\)/);
+          if (implMatch) {
+            implType = implMatch[1];
+            implValue = implMatch[2];
+          }
+        } else if (line.startsWith('cost:')) {
+          cost = parseFloat(line.substring(5).trim());
+        } else if (line.startsWith('confidence:')) {
+          confidence = parseFloat(line.substring(11).trim());
+        } else if (line.startsWith('doc:')) {
+          doc = line.substring(4).trim().replace(/^["']|["']$/g, '');
+        }
+
+        i++;
       }
-    } else if (currentBlock === 'fn' && currentObj) {
-      if (line.startsWith('cost ')) currentObj.cost = parseFloat(line.substring(5));
-      else if (line.startsWith('conf ')) currentObj.confidence = parseFloat(line.substring(5));
-      else if (line.startsWith('doc ')) currentObj.doc = line.substring(4);
-      else if (line.startsWith('impl ')) {
-        const parts = line.substring(5).split(':');
-        currentObj.impl = {
-          type: parts[0].trim(),
-          value: parts.slice(1).join(':').trim()
-        };
+
+      // Parse signature: A -> B or (A, B) -> C or A, B -> C
+      if (sig) {
+        let dom: string[] = [];
+        let cod = '';
+
+        if (sig.includes('->')) {
+          const [domStr, codStr] = sig.split('->').map(s => s.trim());
+          cod = codStr;
+
+          // Check if domain is multi-arg: (A, B) or A, B
+          const cleanDom = domStr.replace(/^\(|\)$/g, '').trim();
+          if (cleanDom.includes(',')) {
+            dom = cleanDom.split(',').map(s => s.trim()).filter(s => s);
+          } else {
+            dom = [cleanDom];
+          }
+        }
+
+        funcs.push({
+          name: funcName,
+          dom,
+          cod,
+          cost,
+          confidence,
+          impl: { type: implType, value: implValue },
+          doc
+        });
       }
+    }
+    else {
+      i++;
     }
   }
 
@@ -275,58 +484,161 @@ const executePipeline = (node: SynthesisNode, context: any): any => {
 // --- Components ---
 
 const GraphVisualizer = ({ catalog }: { catalog: Catalog }) => {
-  // Simple layouting for demo purposes
-  // Group types by whether they are sources (no incoming edges in pure directed graph context is hard to guess without full graph analysis, 
-  // so we just place them randomly or in a circle)
-  
+  // Improved graph layout with proper multi-argument function support
+  const typeNames = Object.keys(catalog.types);
+  const nodeRadius = 35;
+  const viewWidth = 800;
+  const viewHeight = 500;
+
+  // Layered layout: arrange types in layers based on dependencies
+  const typePositions: Record<string, {x: number, y: number}> = {};
+
+  // Simple horizontal layout with vertical spread
+  typeNames.forEach((typeName, i) => {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    typePositions[typeName] = {
+      x: 100 + col * 200,
+      y: 80 + row * 120
+    };
+  });
+
   return (
     <div className="relative w-full h-full bg-white overflow-hidden border border-slate-200 rounded-lg flex items-center justify-center p-4 shadow-sm">
-      <div className="text-slate-400 absolute top-2 right-2 text-xs">簡易グラフビュー</div>
-      {/* SVG Rendering of nodes and edges */}
-      <svg className="w-full h-full" viewBox="0 0 600 400">
+      <div className="text-slate-400 absolute top-2 right-2 text-xs">カタロググラフ (type_synthesis互換)</div>
+
+      <svg className="w-full h-full" viewBox={`0 0 ${viewWidth} ${viewHeight}`}>
         <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
             <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
           </marker>
         </defs>
-        
-        {/* Render Logic: Simplified Force Layout or Layered Layout simulation */}
-        {/* Since implementing a full force-layout in a single file React component is heavy, 
-            we will render a static conceptual representation based on the loaded DSL */}
-        
-        {Object.keys(catalog.types).map((typeName, i) => {
-          const x = 50 + (i * 150) % 500;
-          const y = 50 + Math.floor(i / 3) * 100;
+
+        {/* Render edges (functions) first so they appear below nodes */}
+        {catalog.funcs.map((f, i) => {
+          const endType = f.cod;
+          const endPos = typePositions[endType];
+
+          if (!endPos) return null;
+
+          // Handle multi-argument functions: draw edges from all domain types
           return (
-            <g key={typeName}>
-              <circle cx={x} cy={y} r="30" fill="#f1f5f9" stroke="#3b82f6" strokeWidth="2" />
-              <text x={x} y={y} dy="5" textAnchor="middle" fill="#1e293b" fontSize="10" className="pointer-events-none font-bold">
-                {typeName.substring(0, 8)}
-              </text>
+            <g key={`func-${i}`}>
+              {f.dom.map((domType, domIdx) => {
+                const startPos = typePositions[domType];
+                if (!startPos) return null;
+
+                // Calculate edge points (from node edge to node edge, not center to center)
+                const dx = endPos.x - startPos.x;
+                const dy = endPos.y - startPos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const offsetStart = nodeRadius / dist;
+                const offsetEnd = nodeRadius / dist;
+
+                const x1 = startPos.x + dx * offsetStart;
+                const y1 = startPos.y + dy * offsetStart;
+                const x2 = endPos.x - dx * offsetEnd;
+                const y2 = endPos.y - dy * offsetEnd;
+
+                const midX = (x1 + x2) / 2;
+                const midY = (y1 + y2) / 2;
+
+                return (
+                  <g key={`edge-${i}-${domIdx}`}>
+                    <line
+                      x1={x1} y1={y1}
+                      x2={x2} y2={y2}
+                      stroke="#94a3b8"
+                      strokeWidth="2"
+                      markerEnd="url(#arrowhead)"
+                      opacity="0.7"
+                    />
+                    {/* Function name label (only on first edge to avoid clutter) */}
+                    {domIdx === 0 && (
+                      <>
+                        <text
+                          x={midX} y={midY - 12}
+                          fill="#475569"
+                          fontSize="9"
+                          fontWeight="bold"
+                          textAnchor="middle"
+                        >
+                          {f.name}
+                        </text>
+                        {/* Cost and confidence labels */}
+                        <text
+                          x={midX} y={midY - 2}
+                          fill="#64748b"
+                          fontSize="8"
+                          textAnchor="middle"
+                        >
+                          cost: {f.cost} | conf: {(f.confidence * 100).toFixed(0)}%
+                        </text>
+                      </>
+                    )}
+                  </g>
+                );
+              })}
             </g>
           );
         })}
-        
-        {catalog.funcs.map((f, i) => {
-           // Find coords (very rough for demo)
-           const startType = f.dom[0];
-           const endType = f.cod;
-           const startIdx = Object.keys(catalog.types).indexOf(startType);
-           const endIdx = Object.keys(catalog.types).indexOf(endType);
-           
-           if (startIdx === -1 || endIdx === -1) return null;
 
-           const sx = 50 + (startIdx * 150) % 500;
-           const sy = 50 + Math.floor(startIdx / 3) * 100;
-           const ex = 50 + (endIdx * 150) % 500;
-           const ey = 50 + Math.floor(endIdx / 3) * 100;
+        {/* Render nodes (types) */}
+        {typeNames.map((typeName) => {
+          const pos = typePositions[typeName];
+          const typeDef = catalog.types[typeName];
+          const hasAttrs = Object.keys(typeDef.attrs).length > 0;
 
-           return (
-             <g key={i}>
-                <line x1={sx} y1={sy} x2={ex} y2={ey} stroke="#94a3b8" strokeWidth="1" markerEnd="url(#arrowhead)" />
-                <text x={(sx+ex)/2} y={(sy+ey)/2} fill="#64748b" fontSize="8" dy="-5">{f.name}</text>
-             </g>
-           );
+          return (
+            <g key={typeName}>
+              {/* Node circle */}
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={nodeRadius}
+                fill={typeDef.isProduct ? "#fef3c7" : "#dbeafe"}
+                stroke={typeDef.isProduct ? "#f59e0b" : "#3b82f6"}
+                strokeWidth="2.5"
+              />
+              {/* Type name */}
+              <text
+                x={pos.x}
+                y={pos.y}
+                dy="4"
+                textAnchor="middle"
+                fill="#1e293b"
+                fontSize="11"
+                fontWeight="bold"
+              >
+                {typeName.length > 12 ? typeName.substring(0, 10) + '...' : typeName}
+              </text>
+              {/* Attributes badge */}
+              {hasAttrs && (
+                <text
+                  x={pos.x}
+                  y={pos.y + 15}
+                  textAnchor="middle"
+                  fill="#64748b"
+                  fontSize="7"
+                >
+                  [{Object.entries(typeDef.attrs).slice(0, 1).map(([k, v]) => `${k}=${v}`).join(', ')}]
+                </text>
+              )}
+              {/* Product type indicator */}
+              {typeDef.isProduct && (
+                <text
+                  x={pos.x}
+                  y={pos.y - 20}
+                  textAnchor="middle"
+                  fill="#f59e0b"
+                  fontSize="8"
+                  fontWeight="bold"
+                >
+                  ×
+                </text>
+              )}
+            </g>
+          );
         })}
       </svg>
     </div>
@@ -379,6 +691,7 @@ const PipelineTree = ({ node, isRoot = true }: { node: SynthesisNode, isRoot?: b
 // --- Main App Component ---
 
 export default function OntologySynthesisDemo() {
+  const [selectedExample, setSelectedExample] = useState(DEFAULT_EXAMPLE);
   const [dsl, setDsl] = useState(DEFAULT_DSL);
   const [inputDataJson, setInputDataJson] = useState(DEFAULT_INPUT_DATA);
   const [catalog, setCatalog] = useState<Catalog>({ types: {}, funcs: [] });
@@ -388,6 +701,17 @@ export default function OntologySynthesisDemo() {
   const [selectedSolutionIdx, setSelectedSolutionIdx] = useState<number | null>(null);
   const [executionResult, setExecutionResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'graph' | 'pipeline'>('pipeline');
+
+  // Handle example selection
+  const handleExampleChange = (exampleName: string) => {
+    setSelectedExample(exampleName);
+    const example = EXAMPLES[exampleName];
+    setDsl(example.dsl);
+    setInputDataJson(JSON.stringify(example.inputData, null, 2));
+    setSolutions([]);
+    setSelectedSolutionIdx(null);
+    setExecutionResult(null);
+  };
 
   // Load DSL on change
   useEffect(() => {
@@ -443,6 +767,22 @@ export default function OntologySynthesisDemo() {
             Ontology Synthesizer
           </h1>
           <p className="text-xs text-slate-500 mt-1">型理論に基づく合成シミュレータ</p>
+        </div>
+
+        {/* Example Selector */}
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+          <label className="block text-xs font-bold text-slate-600 mb-2">事例選択 (Examples)</label>
+          <select
+            className="w-full bg-white border border-slate-300 rounded p-2 text-sm focus:border-blue-500 outline-none text-slate-700 font-medium"
+            value={selectedExample}
+            onChange={(e) => handleExampleChange(e.target.value)}
+          >
+            {Object.keys(EXAMPLES).map((exampleName) => (
+              <option key={exampleName} value={exampleName}>
+                {exampleName}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex-1 flex flex-col min-h-0">
