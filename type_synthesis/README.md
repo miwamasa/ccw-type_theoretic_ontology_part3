@@ -10,6 +10,7 @@
 - **Product型**: 複数の値を1つのタプルとして扱う直積型
 - **単位変換**: 自動的な単位変換トランスデューサー
 - **実行エンジン**: SPARQL, Formula, REST, Builtinのサポート
+- **PROV-O準拠の来歴記録**: 計算過程をW3C標準形式で記録・エクスポート
 
 ## インストール
 
@@ -211,6 +212,40 @@ results = synthesize_backward(catalog, "Product", "CO2")
 context = ExecutionContext()
 value = execute_synthesis_result(results[0], input_data, context)
 ```
+
+## PROV-O準拠の来歴記録（Provenance Tracking）
+
+計算過程をW3C PROV-O標準形式で記録・追跡できます。詳細は[PROVENANCE.md](./PROVENANCE.md)を参照してください。
+
+### 基本的な使い方
+
+```python
+from executor import Executor, ExecutionContext
+
+# Provenance追跡を有効化
+context = ExecutionContext(track_provenance=True)
+executor = Executor(context)
+
+# 実行（自動的にProvenanceが記録される）
+result = executor.execute_path(path, 100.0, source_type="Fuel")
+
+# Provenanceグラフを取得
+prov_graph = context.provenance_tracker.graph
+
+# 様々な形式でエクスポート
+json_output = prov_graph.export_json()
+turtle_output = prov_graph.export_turtle()
+jsonld_output = prov_graph.export_jsonld()
+```
+
+### ユースケース
+
+- **監査とコンプライアンス**: 計算の透明性を確保
+- **デバッグと検証**: 計算過程を追跡して問題を特定
+- **再現性の確保**: すべての入力・関数・パラメータを記録
+- **セマンティックWeb統合**: RDF形式で他ツールと統合
+
+詳細なドキュメントとサンプルコードは[PROVENANCE.md](./PROVENANCE.md)をご覧ください。
 
 ## 今後の拡張
 
