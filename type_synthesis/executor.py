@@ -20,6 +20,7 @@ from synth_lib import (
     Func, Catalog, SynthesisResult, SynthesisDAG, DAGNode,
     synthesize_backward, synthesize_multiarg_full
 )
+from provenance import ProvenanceGraph, ProvenanceTracker
 
 
 @dataclass
@@ -28,16 +29,20 @@ class ExecutionContext:
     # SPARQL用
     sparql_endpoint: Optional[str] = None
     sparql_prefixes: Dict[str, str] = None
-    
+
     # REST用
     rest_headers: Dict[str, str] = None
-    
+
     # 数式用の変数
     variables: Dict[str, Any] = None
-    
+
     # 排出係数などの定数
     constants: Dict[str, float] = None
-    
+
+    # Provenance追跡
+    provenance_tracker: Optional[ProvenanceTracker] = None
+    track_provenance: bool = False
+
     def __post_init__(self):
         if self.sparql_prefixes is None:
             self.sparql_prefixes = {}
@@ -51,6 +56,8 @@ class ExecutionContext:
                 "efficiency": 0.35,       # エネルギー効率
                 "kWh_to_CO2": 0.5,        # kg-CO2 per kWh
             }
+        if self.track_provenance and self.provenance_tracker is None:
+            self.provenance_tracker = ProvenanceTracker()
 
 
 class ExecutionError(Exception):
@@ -60,7 +67,7 @@ class ExecutionError(Exception):
 
 class Executor:
     """実行エンジン"""
-    
+
     def __init__(self, context: ExecutionContext = None):
         self.context = context or ExecutionContext()
         self._builtins: Dict[str, Callable] = {
@@ -74,27 +81,43 @@ class Executor:
             "abs": lambda x: abs(x),
             "round": lambda x: round(x),
         }
+        # 値 -> エンティティIDのマッピング（来歴追跡用）
+        self._value_to_entity: Dict[int, str] = {}
     
     def execute_path(
-        self, 
-        path: List[Func], 
-        input_value: Any
+        self,
+        path: List[Func],
+        input_value: Any,
+        source_type: str = None
     ) -> Any:
         """
         パス（関数のリスト）を実行
-        
+
         Args:
             path: 関数のリスト
             input_value: 入力値
-        
+            source_type: ソース型名（来歴追跡用、省略可）
+
         Returns:
             変換結果
         """
+        # 来歴追跡: 初期入力をエンティティとして登録
+        if self.context.track_provenance and self.context.provenance_tracker:
+            if self._get_entity_id_for_value(input_value) is None:
+                src_type = source_type or (path[0].dom if path and isinstance(path[0].dom, str) else "SourceData")
+                entity_id = self.context.provenance_tracker.graph.add_entity(
+                    entity_id=None,
+                    type_name=src_type,
+                    value=input_value,
+                    attributes={"role": "source"}
+                )
+                self._register_value_entity(input_value, entity_id)
+
         result = input_value
-        
+
         for func in path:
             result = self.execute_func(func, result)
-        
+
         return result
     
     def execute_dag(
@@ -104,21 +127,21 @@ class Executor:
     ) -> Any:
         """
         DAGを実行
-        
+
         Args:
             dag: 合成結果のDAG
             source_values: ソースノードID -> 値 のマッピング
-        
+
         Returns:
             ゴールノードの値
         """
         # トポロジカル順で実行
         order = dag.topological_order()
         node_values: Dict[str, Any] = {}
-        
+
         for node_id in order:
             node = dag.nodes[node_id]
-            
+
             if node.node_type == "source":
                 # ソースノード: 入力値を取得
                 if node_id in source_values:
@@ -134,6 +157,17 @@ class Executor:
                     if not found:
                         # 最初の値を使用
                         node_values[node_id] = list(source_values.values())[0]
+
+                # 来歴追跡: ソース値をエンティティとして登録
+                if self.context.track_provenance and self.context.provenance_tracker:
+                    if self._get_entity_id_for_value(node_values[node_id]) is None:
+                        entity_id = self.context.provenance_tracker.graph.add_entity(
+                            entity_id=node_id,
+                            type_name=node.type_name,
+                            value=node_values[node_id],
+                            attributes={"role": "source"}
+                        )
+                        self._register_value_entity(node_values[node_id], entity_id)
             
             elif node.node_type == "transform":
                 # 変換ノード: パスを実行
@@ -173,36 +207,91 @@ class Executor:
         
         return node_values[dag.goal_node]
     
-    def execute_func(self, func: Func, input_value: Any) -> Any:
+    def _get_entity_id_for_value(self, value: Any) -> Optional[str]:
+        """値に対応するエンティティIDを取得"""
+        value_id = id(value)
+        return self._value_to_entity.get(value_id)
+
+    def _register_value_entity(self, value: Any, entity_id: str):
+        """値とエンティティIDの対応を登録"""
+        value_id = id(value)
+        self._value_to_entity[value_id] = entity_id
+
+    def execute_func(self, func: Func, input_value: Any, input_type: str = None) -> Any:
         """
         単一の関数を実行
-        
+
         Args:
             func: 関数
             input_value: 入力値
-        
+            input_type: 入力の型名（来歴追跡用、省略可）
+
         Returns:
             出力値
         """
+        # 来歴追跡: 入力エンティティIDを取得または作成
+        input_entity_ids = []
+        if self.context.track_provenance and self.context.provenance_tracker:
+            if isinstance(input_value, tuple):
+                # 複数入力の場合
+                for i, val in enumerate(input_value):
+                    ent_id = self._get_entity_id_for_value(val)
+                    if ent_id is None:
+                        # 新しいエンティティとして登録
+                        dom_type = func.dom_types[i] if func.is_multiarg and i < len(func.dom_types) else "Unknown"
+                        ent_id = self.context.provenance_tracker.graph.add_entity(
+                            entity_id=None,
+                            type_name=dom_type,
+                            value=val
+                        )
+                        self._register_value_entity(val, ent_id)
+                    input_entity_ids.append(ent_id)
+            else:
+                # 単一入力の場合
+                ent_id = self._get_entity_id_for_value(input_value)
+                if ent_id is None:
+                    dom_type = input_type or (func.dom if isinstance(func.dom, str) else "Unknown")
+                    ent_id = self.context.provenance_tracker.graph.add_entity(
+                        entity_id=None,
+                        type_name=dom_type,
+                        value=input_value
+                    )
+                    self._register_value_entity(input_value, ent_id)
+                input_entity_ids.append(ent_id)
+
+        # 関数を実行
         impl = func.impl
         impl_type = impl.get("type", "identity")
-        
+
         if impl_type == "sparql":
-            return self._execute_sparql(impl, input_value)
+            result = self._execute_sparql(impl, input_value)
         elif impl_type == "formula":
-            return self._execute_formula(impl, input_value)
+            result = self._execute_formula(impl, input_value)
         elif impl_type == "rest":
-            return self._execute_rest(impl, input_value)
+            result = self._execute_rest(impl, input_value)
         elif impl_type == "builtin":
-            return self._execute_builtin(impl, input_value)
+            result = self._execute_builtin(impl, input_value)
         elif impl_type == "unit_conversion":
-            return self._execute_unit_conversion(impl, input_value)
+            result = self._execute_unit_conversion(impl, input_value)
         elif impl_type == "json":
-            return self._execute_json(impl, input_value)
+            result = self._execute_json(impl, input_value)
         elif impl_type == "template":
-            return self._execute_template(impl, input_value)
+            result = self._execute_template(impl, input_value)
         else:
             raise ExecutionError(f"Unknown impl type: {impl_type}")
+
+        # 来歴追跡: 出力エンティティを記録
+        if self.context.track_provenance and self.context.provenance_tracker:
+            output_entity_id = self.context.provenance_tracker.track_function_execution(
+                func_id=func.id,
+                func_signature=func.signature,
+                input_entity_ids=input_entity_ids,
+                output_value=result,
+                output_type=func.cod
+            )
+            self._register_value_entity(result, output_entity_id)
+
+        return result
     
     def _execute_sparql(self, impl: Dict, input_value: Any) -> Any:
         """SPARQLクエリを実行"""
@@ -280,7 +369,7 @@ class Executor:
             for i, val in enumerate(input_value):
                 local_vars[f"arg{i}"] = val
                 local_vars[f"x{i}"] = val
-            
+
             # よく使う名前も設定
             if len(input_value) == 3:
                 local_vars["scope1"] = input_value[0]
@@ -289,6 +378,8 @@ class Executor:
             if len(input_value) == 2:
                 local_vars["a"] = input_value[0]
                 local_vars["b"] = input_value[1]
+                local_vars["scope1"] = input_value[0]
+                local_vars["scope2"] = input_value[1]
         elif isinstance(input_value, dict):
             local_vars.update(input_value)
         else:
