@@ -56,6 +56,50 @@ type SynthesisNode = {
   accumulatedConfidence: number;
 };
 
+// --- PROV-O Types ---
+
+type ProvenanceEntity = {
+  id: string;
+  type: string;
+  value: any;
+  timestamp: string;
+  attributes: Record<string, any>;
+};
+
+type ProvenanceActivity = {
+  id: string;
+  funcId: string;
+  funcSignature: string;
+  startTime: string;
+  endTime: string;
+};
+
+type ProvenanceUsage = {
+  activityId: string;
+  entityId: string;
+  role: string;
+};
+
+type ProvenanceGeneration = {
+  entityId: string;
+  activityId: string;
+  role: string;
+};
+
+type ProvenanceDerivation = {
+  derivedEntityId: string;
+  sourceEntityId: string;
+  activityId: string;
+};
+
+type ProvenanceGraph = {
+  entities: Record<string, ProvenanceEntity>;
+  activities: Record<string, ProvenanceActivity>;
+  usages: ProvenanceUsage[];
+  generations: ProvenanceGeneration[];
+  derivations: ProvenanceDerivation[];
+};
+
 // --- Example DSLs ---
 
 const EXAMPLES = {
@@ -457,19 +501,173 @@ const solveInhabitation = (
 
 // --- Execution Engine (Phase 3) ---
 
-const executePipeline = (node: SynthesisNode, context: any): any => {
+// --- PROV-O Helper Functions ---
+
+const createProvenanceGraph = (): ProvenanceGraph => ({
+  entities: {},
+  activities: {},
+  usages: [],
+  generations: [],
+  derivations: []
+});
+
+const generateId = (prefix: string): string => {
+  return `${prefix}_${Math.random().toString(36).substr(2, 9)}`;
+};
+
+const addEntity = (
+  graph: ProvenanceGraph,
+  entityId: string,
+  typeName: string,
+  value: any,
+  attributes: Record<string, any> = {}
+): string => {
+  graph.entities[entityId] = {
+    id: entityId,
+    type: typeName,
+    value: value,
+    timestamp: new Date().toISOString(),
+    attributes: attributes
+  };
+  return entityId;
+};
+
+const addActivity = (
+  graph: ProvenanceGraph,
+  activityId: string,
+  funcId: string,
+  funcSignature: string
+): string => {
+  graph.activities[activityId] = {
+    id: activityId,
+    funcId: funcId,
+    funcSignature: funcSignature,
+    startTime: new Date().toISOString(),
+    endTime: new Date().toISOString()
+  };
+  return activityId;
+};
+
+const addUsage = (graph: ProvenanceGraph, activityId: string, entityId: string, role: string = '') => {
+  graph.usages.push({ activityId, entityId, role });
+};
+
+const addGeneration = (graph: ProvenanceGraph, entityId: string, activityId: string, role: string = '') => {
+  graph.generations.push({ entityId, activityId, role });
+};
+
+const addDerivation = (graph: ProvenanceGraph, derivedEntityId: string, sourceEntityId: string, activityId: string) => {
+  graph.derivations.push({ derivedEntityId, sourceEntityId, activityId });
+};
+
+const escapeTurtle = (s: string): string => {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+};
+
+const exportTurtle = (graph: ProvenanceGraph): string => {
+  const lines = [
+    '@prefix prov: <http://www.w3.org/ns/prov#> .',
+    '@prefix ex: <http://example.org/provenance/> .',
+    '@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .',
+    ''
+  ];
+
+  // Entities
+  Object.values(graph.entities).forEach(entity => {
+    lines.push(`ex:${entity.id} a prov:Entity ;`);
+    lines.push(`    prov:type "${entity.type}" ;`);
+    lines.push(`    prov:value "${escapeTurtle(String(entity.value))}" ;`);
+    lines.push(`    prov:generatedAtTime "${entity.timestamp}"^^xsd:dateTime .`);
+    lines.push('');
+  });
+
+  // Activities
+  Object.values(graph.activities).forEach(activity => {
+    lines.push(`ex:${activity.id} a prov:Activity ;`);
+    lines.push(`    ex:funcId "${activity.funcId}" ;`);
+    lines.push(`    ex:funcSignature "${escapeTurtle(activity.funcSignature)}" ;`);
+    lines.push(`    prov:startedAtTime "${activity.startTime}"^^xsd:dateTime ;`);
+    lines.push(`    prov:endedAtTime "${activity.endTime}"^^xsd:dateTime .`);
+    lines.push('');
+  });
+
+  // Usages
+  graph.usages.forEach(usage => {
+    lines.push(`ex:${usage.activityId} prov:used ex:${usage.entityId}`);
+    if (usage.role) {
+      lines.push(`    ; prov:hadRole "${usage.role}"`);
+    }
+    lines.push('    .');
+    lines.push('');
+  });
+
+  // Generations
+  graph.generations.forEach(generation => {
+    lines.push(`ex:${generation.entityId} prov:wasGeneratedBy ex:${generation.activityId}`);
+    if (generation.role) {
+      lines.push(`    ; prov:hadRole "${generation.role}"`);
+    }
+    lines.push('    .');
+    lines.push('');
+  });
+
+  // Derivations
+  graph.derivations.forEach(derivation => {
+    lines.push(`ex:${derivation.derivedEntityId} prov:wasDerivedFrom ex:${derivation.sourceEntityId}`);
+    lines.push(`    ; prov:qualifiedDerivation [`);
+    lines.push(`        a prov:Derivation ;`);
+    lines.push(`        prov:entity ex:${derivation.sourceEntityId} ;`);
+    lines.push(`        prov:hadActivity ex:${derivation.activityId}`);
+    lines.push(`    ] .`);
+    lines.push('');
+  });
+
+  return lines.join('\n');
+};
+
+// --- Execution with Provenance Tracking ---
+
+const executePipeline = (node: SynthesisNode, context: any, provGraph?: ProvenanceGraph, valueToEntity?: Map<any, string>): any => {
   // Leaf node (Source)
   if (!node.func) {
-    return context[node.type];
+    const value = context[node.type];
+
+    // Track source entity in provenance
+    if (provGraph && valueToEntity) {
+      if (!valueToEntity.has(value)) {
+        const entityId = generateId('entity');
+        addEntity(provGraph, entityId, node.type, value, { role: 'source' });
+        valueToEntity.set(value, entityId);
+      }
+    }
+
+    return value;
   }
 
-  // Execute inputs
-  const inputValues = node.inputs.map(inputNode => executePipeline(inputNode, context));
+  // Execute inputs recursively
+  const inputValues = node.inputs.map(inputNode => executePipeline(inputNode, context, provGraph, valueToEntity));
 
   // Execute current function
   const f = node.func;
+
+  // Track input entities
+  const inputEntityIds: string[] = [];
+  if (provGraph && valueToEntity) {
+    inputValues.forEach((val, idx) => {
+      let entityId = valueToEntity.get(val);
+      if (!entityId) {
+        entityId = generateId('entity');
+        const inputType = f.dom[idx] || 'Unknown';
+        addEntity(provGraph, entityId, inputType, val);
+        valueToEntity.set(val, entityId);
+      }
+      inputEntityIds.push(entityId);
+    });
+  }
   
   // Simulation Logic based on impl type
+  let result: any;
+
   switch (f.impl.type) {
     case 'formula':
       // Parse and evaluate formula
@@ -504,18 +702,51 @@ const executePipeline = (node: SynthesisNode, context: any): any => {
 
         // eslint-disable-next-line no-new-func
         const fn = new Function(...scopeKeys, funcBody);
-        return fn(...scopeValues);
+        result = fn(...scopeValues);
       } catch (e) {
-        return `Error evaluating formula: ${e instanceof Error ? e.message : String(e)}`;
+        result = `Error evaluating formula: ${e instanceof Error ? e.message : String(e)}`;
       }
+      break;
     case 'rest':
     case 'sparql':
       // Mock: look up in context by function name if available, else return random/dummy
-      if (context[f.name] !== undefined) return context[f.name];
-      return 100; // Mock default
+      if (context[f.name] !== undefined) {
+        result = context[f.name];
+      } else {
+        result = 100; // Mock default
+      }
+      break;
     default:
-      return "Executed";
+      result = "Executed";
   }
+
+  // Track provenance for function execution
+  if (provGraph && valueToEntity && inputEntityIds.length > 0) {
+    // Create activity
+    const activityId = generateId('activity');
+    const funcSignature = `${f.dom.join(', ')} -> ${f.cod}`;
+    addActivity(provGraph, activityId, f.name, funcSignature);
+
+    // Record usages
+    inputEntityIds.forEach((entityId, idx) => {
+      addUsage(provGraph, activityId, entityId, `input_${idx}`);
+    });
+
+    // Create output entity
+    const outputEntityId = generateId('entity');
+    addEntity(provGraph, outputEntityId, f.cod, result);
+    valueToEntity.set(result, outputEntityId);
+
+    // Record generation
+    addGeneration(provGraph, outputEntityId, activityId, 'output');
+
+    // Record derivations
+    inputEntityIds.forEach(inputEntityId => {
+      addDerivation(provGraph, outputEntityId, inputEntityId, activityId);
+    });
+  }
+
+  return result;
 };
 
 // --- Components ---
@@ -1398,7 +1629,8 @@ export default function OntologySynthesisDemo() {
   const [solutions, setSolutions] = useState<SynthesisNode[]>([]);
   const [selectedSolutionIdx, setSelectedSolutionIdx] = useState<number | null>(null);
   const [executionResult, setExecutionResult] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'graph' | 'pipeline'>('pipeline');
+  const [provenanceTurtle, setProvenanceTurtle] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'graph' | 'pipeline' | 'provenance'>('pipeline');
   const [editMode, setEditMode] = useState<'text' | 'blocks'>('text');
   const [helpTopic, setHelpTopic] = useState<'dsl' | 'synthesis' | 'execution' | 'blocks' | null>(null);
 
@@ -1413,6 +1645,7 @@ export default function OntologySynthesisDemo() {
     setSolutions([]);
     setSelectedSolutionIdx(null);
     setExecutionResult(null);
+    setProvenanceTurtle(null);
   };
 
   // Generate DSL text from types and funcs
@@ -1481,6 +1714,7 @@ export default function OntologySynthesisDemo() {
     setSolutions(sols);
     setSelectedSolutionIdx(sols.length > 0 ? 0 : null);
     setExecutionResult(null);
+    setProvenanceTurtle(null);
     setActiveTab('pipeline');
   };
 
@@ -1488,10 +1722,21 @@ export default function OntologySynthesisDemo() {
     if (selectedSolutionIdx === null) return;
     try {
       const context = JSON.parse(inputDataJson);
-      const res = executePipeline(solutions[selectedSolutionIdx], context);
+
+      // Create provenance graph and value-to-entity map
+      const provGraph = createProvenanceGraph();
+      const valueToEntity = new Map<any, string>();
+
+      // Execute with provenance tracking
+      const res = executePipeline(solutions[selectedSolutionIdx], context, provGraph, valueToEntity);
       setExecutionResult(JSON.stringify(res));
+
+      // Export provenance as Turtle
+      const turtle = exportTurtle(provGraph);
+      setProvenanceTurtle(turtle);
     } catch (e) {
       setExecutionResult("Error: Invalid JSON Input or Logic");
+      setProvenanceTurtle(null);
     }
   };
 
@@ -1630,19 +1875,26 @@ export default function OntologySynthesisDemo() {
         
         {/* Tabs */}
         <div className="flex border-b border-slate-200 bg-white shadow-sm z-10">
-          <button 
+          <button
             onClick={() => setActiveTab('pipeline')}
             className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'pipeline' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             <TrendingUp size={16} />
             合成パス & 実行
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('graph')}
             className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'graph' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             <Activity size={16} />
             カタロググラフ (Catalog)
+          </button>
+          <button
+            onClick={() => setActiveTab('provenance')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'provenance' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            <FileText size={16} />
+            来歴 (Provenance)
           </button>
         </div>
 
@@ -1654,6 +1906,30 @@ export default function OntologySynthesisDemo() {
               <div className="flex-1">
                 <GraphVisualizer catalog={catalog} />
               </div>
+            </div>
+          ) : activeTab === 'provenance' ? (
+            <div className="h-full flex flex-col">
+              <div className="mb-4 text-sm text-slate-600 font-bold">PROV-O準拠の来歴 (Turtle形式)</div>
+              {provenanceTurtle ? (
+                <div className="flex-1 bg-white border border-slate-200 rounded-lg p-4 overflow-auto">
+                  <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap">{provenanceTurtle}</pre>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(provenanceTurtle);
+                      alert('来歴データをクリップボードにコピーしました！');
+                    }}
+                    className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                  >
+                    クリップボードにコピー
+                  </button>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-300 rounded-lg bg-white/50">
+                  <FileText size={48} className="mb-4 opacity-50" />
+                  <p>来歴データがありません</p>
+                  <p className="text-xs mt-2 text-slate-500">※ パスを実行すると、PROV-O準拠の来歴が記録されます。</p>
+                </div>
+              )}
             </div>
           ) : (
             <div className="h-full flex flex-col">
@@ -1668,11 +1944,12 @@ export default function OntologySynthesisDemo() {
                   {/* Solution Selector */}
                   <div className="flex gap-4 overflow-x-auto pb-2">
                     {solutions.map((sol, idx) => (
-                      <div 
+                      <div
                         key={idx}
                         onClick={() => {
                           setSelectedSolutionIdx(idx);
                           setExecutionResult(null);
+                          setProvenanceTurtle(null);
                         }}
                         className={`cursor-pointer min-w-[200px] p-3 rounded border shadow-sm transition-all ${selectedSolutionIdx === idx ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400' : 'bg-white border-slate-200 hover:border-slate-300'}`}
                       >
